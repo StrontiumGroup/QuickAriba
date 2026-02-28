@@ -7,6 +7,7 @@ This project contains:
 - `thorlabs_cart_to_excel.py`: converts a Thorlabs cart CSV into that Excel format.
 - `farnell_cart_to_excel.py`: converts a Farnell cart CSV into that Excel format.
 - `digikey_cart_to_excel.py`: converts a DigiKey cart Excel file into that Excel format.
+- `mouser_cart_to_excel.py`: converts a Mouser cart XLS file into that Excel format.
 
 The login/2FA step remains manual. The script attaches to your already logged-in browser tab.
 
@@ -117,6 +118,25 @@ Ignored DigiKey columns:
 - `Manufacturer Part Number`
 - `Available`
 - `Backorder`
+
+## Mouser XLS to Excel
+
+Use this script when you export a Mouser cart as `.xls` and want to generate the Excel file for the importer.
+
+```powershell
+.\.venv\Scripts\python .\mouser_cart_to_excel.py --xls ".\ExampleOffersFromSupplier\ExampleMouserCart.xls" --out ".\ExampleOrdersForAriba\orders_from_mouser.xlsx"
+```
+
+Optional flags:
+
+- `--supplier` default: `Mouser` (written to cell `B1`)
+
+Column mapping used:
+
+- Mouser `Mouser-nr` -> Excel `Product name`
+- Mouser `Omschrijving` -> Excel `Description`
+- Mouser `Besteld aantal` -> Excel `Quantity`
+- Mouser `Prijs (EUR)` -> Excel `Unit price`
 
 ## Install
 
@@ -231,4 +251,3 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 - Verify the PDF is a Reichelt offer table similar to `ExampleReicheltOffer.pdf`.
 - If extraction still fails, install dependencies again: `.\.venv\Scripts\python -m pip install -r requirements.txt`.
-
