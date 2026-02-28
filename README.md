@@ -107,7 +107,7 @@ Edge example:
 & "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir="$env:TEMP\quickariba-profile"
 ```
 
-Then log into Ariba in that browser and open the `Non-catalog request` page.
+Then log into Ariba in that browser and open the `Non-catalog request` page by pressing `Request a non catalog item +`.
 
 ## Run importer
 
