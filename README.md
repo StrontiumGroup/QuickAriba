@@ -5,6 +5,8 @@ This project contains:
 - `ariba_excel_import.py`: imports non-catalog items from Excel into SAP Ariba Buying.
 - `reichelt_offer_to_excel.py`: converts a Reichelt offer PDF into that Excel format.
 - `thorlabs_cart_to_excel.py`: converts a Thorlabs cart CSV into that Excel format.
+- `farnell_cart_to_excel.py`: converts a Farnell cart CSV into that Excel format.
+- `digikey_cart_to_excel.py`: converts a DigiKey cart Excel file into that Excel format.
 
 The login/2FA step remains manual. The script attaches to your already logged-in browser tab.
 
@@ -28,7 +30,7 @@ The script stops when it reaches the first completely empty data row.
 Use this script when you receive a Reichelt offer PDF and want to generate the Excel file for the importer.
 
 ```powershell
-.\.venv\Scripts\python .\reichelt_offer_to_excel.py --pdf ".\ExampleReicheltOffer.pdf" --out ".\orders_from_reichelt.xlsx"
+.\.venv\Scripts\python .\reichelt_offer_to_excel.py --pdf ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf" --out ".\ExampleOrdersForAriba\orders_from_reichelt.xlsx"
 ```
 
 Optional flags:
@@ -58,7 +60,7 @@ Typical workflow:
 3. Run `ariba_excel_import.py` with the generated `.xlsx` file.
 
 ```powershell
-.\.venv\Scripts\python .\thorlabs_cart_to_excel.py --csv ".\ExampleThorlabsCart.csv" --out ".\orders_from_thorlabs.xlsx"
+.\.venv\Scripts\python .\thorlabs_cart_to_excel.py --csv ".\ExampleOffersFromSupplier\ExampleThorlabsCart.csv" --out ".\ExampleOrdersForAriba\\orders_from_thorlabs.xlsx"
 ```
 
 Optional flags:
@@ -71,6 +73,50 @@ Column mapping used:
 - Excel `Description` -> `<Thorlabs Description>` on first line, then ` URL: <Thorlabs URL>` on second line
 - Thorlabs `Quantity` -> Excel `Quantity`
 - Thorlabs `Unit Price` -> Excel `Unit price`
+
+## Farnell CSV to Excel
+
+Use this script when you export a Farnell shopping cart CSV and want to generate the Excel file for the importer.
+
+```powershell
+.\.venv\Scripts\python .\farnell_cart_to_excel.py --csv ".\ExampleOffersFromSupplier\ExampleFarnellCart.csv" --out ".\ExampleOrdersForAriba\\orders_from_farnell.xlsx"
+```
+
+Optional flags:
+
+- `--supplier` default: `Farnell` (written to cell `B1`)
+
+Column mapping used:
+
+- Farnell `Ordercode` -> Excel `Product name`
+- Farnell `Fabrikant / beschrijving` -> Excel `Description`
+- Farnell `Hoeveelheid` -> Excel `Quantity`
+- Farnell `Prijs per stuk` -> Excel `Unit price`
+
+## DigiKey XLSX to Excel
+
+Use this script when you export a DigiKey cart workbook and want to generate the Excel file for the importer.
+
+```powershell
+.\.venv\Scripts\python .\digikey_cart_to_excel.py --xlsx ".\ExampleOffersFromSupplier\ExampleDigikeyCart.xlsx" --out ".\ExampleOrdersForAriba\\orders_from_digikey.xlsx"
+```
+
+Optional flags:
+
+- `--supplier` default: `DigiKey` (written to cell `B1`)
+
+Column mapping used:
+
+- DigiKey `Part Number` -> Excel `Product name`
+- DigiKey `Description` -> Excel `Description`
+- DigiKey `Quantity` -> Excel `Quantity`
+- DigiKey `Unit Price` -> Excel `Unit price`
+
+Ignored DigiKey columns:
+
+- `Manufacturer Part Number`
+- `Available`
+- `Backorder`
 
 ## Install
 
