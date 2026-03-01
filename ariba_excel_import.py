@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import time
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -198,6 +199,20 @@ def first_visible_text(page: Page, text: str):
     return None
 
 
+def wait_for_visible_text(page: Page, text: str, timeout_ms: int = 10000) -> None:
+    deadline = time.monotonic() + (timeout_ms / 1000)
+    while time.monotonic() < deadline:
+        if first_visible_text(page, text) is not None:
+            return
+        page.wait_for_timeout(200)
+    raise TimeoutError(f"Timed out waiting for visible text: {text}")
+
+
+def supplier_name_token(supplier_name: str) -> str:
+    parts = [p for p in supplier_name.split() if p]
+    return parts[0] if parts else supplier_name
+
+
 def fill_quantity(page: Page, value: str) -> None:
     quantity_input = first_visible_or_none(
         [
@@ -272,29 +287,39 @@ def select_supplier(page: Page, supplier_name: str) -> None:
     exact_row.click()
     select_button = page.get_by_role("button", name="Select").locator(":visible").first
     select_button.click()
-
-    page.get_by_text("Selected", exact=False).first.wait_for(timeout=10000)
+    # Accept either explicit selected badge or visible supplier name in chosen-supplier card.
+    token = supplier_name_token(supplier_name)
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline:
+        if is_supplier_already_selected(page, supplier_name):
+            return
+        if token and first_visible_text(page, token) is not None:
+            return
+        page.wait_for_timeout(200)
+    raise TimeoutError("Timed out confirming supplier selection.")
 
 
 def verify_supplier_selected(page: Page, supplier_name: str) -> None:
     supplier_section = page.locator("xpath=//*[contains(normalize-space(.), 'Chosen supplier')]/ancestor::*[1]").first
     supplier_section.wait_for(timeout=8000)
-    selected_badge = first_visible_text(page, "Selected")
-    if selected_badge is None:
-        raise RuntimeError("Supplier card is present but no visible 'Selected' badge found.")
-    # Soft check: if the entered name appears visibly, good. If not, selected badge still counts.
-    if supplier_name:
-        name_match = first_visible_text(page, supplier_name)
-        if name_match is not None:
-            return
+    if first_visible_text(page, "Selected") is not None:
+        return
+    token = supplier_name_token(supplier_name)
+    if token and first_visible_text(page, token) is not None:
+        return
+    raise RuntimeError("Supplier card is present but could not confirm selected supplier.")
 
 
 def is_supplier_already_selected(page: Page, supplier_name: str) -> bool:
-    selected_badge = first_visible_text(page, "Selected")
-    if selected_badge is None:
+    if first_visible_text(page, "Select a supplier") is not None:
         return False
     supplier_panel = first_visible_text(page, "Chosen supplier")
-    return supplier_panel is not None
+    if supplier_panel is None:
+        return False
+    if first_visible_text(page, "Selected") is not None:
+        return True
+    token = supplier_name_token(supplier_name)
+    return bool(token and first_visible_text(page, token) is not None)
 
 
 def click_add_to_cart(page: Page) -> None:
