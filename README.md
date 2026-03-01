@@ -1,5 +1,22 @@
 # QuickAriba Importer
 
+## Quick start
+
+Use this when you want to submit an order fast with the provided batch files.
+
+1. One-time setup: create `.venv` and install dependencies (see [Install](#install)).
+2. Double-click `chrome.bat` to start Chrome with remote debugging.
+3. In that Chrome window, log in to Ariba and open `Request a non catalog item +`.
+4. Run `submit.bat "<path-to-offer-file>"` from PowerShell, for example:
+
+```powershell
+.\submit.bat ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf"
+```
+
+`submit.bat` calls `supplier_file_to_ariba.py`, which auto-detects the supplier format, converts if needed, and fills the Ariba non-catalog request.
+
+## Project overview
+
 This project contains:
 
 - `supplier_file_to_ariba.py`: auto-detects input format, converts if needed, then runs `ariba_excel_import.py`.
