@@ -13,9 +13,9 @@ Use this when you want to quickly submit an order to Ariba.
 .\submit.bat ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf"
 ```
 
-`submit.bat` calls `supplier_file_to_ariba.py`, which auto-detects the supplier format, converts if needed, and fills the Ariba non-catalog request. 
-Read on to learn which supplier formats are supported. Use CodeX to add scripts for more suppliers. 
-Alternatively: create an excel sheet in the [Excel format](## Excel format) described below and submit that excel sheet directly.
+`submit.bat` calls `supplier_file_to_ariba.py`, which auto-detects the supplier format, converts if needed, and fills the Ariba non-catalog request.
+Read on to learn which supplier formats are supported. Use CodeX to add scripts for more suppliers.
+Alternatively: create an excel sheet in the [Excel format](#excel-format) described below and submit that excel sheet directly.
 
 ## Project overview
 
