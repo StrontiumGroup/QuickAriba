@@ -2,12 +2,14 @@
 
 This project contains:
 
+- `supplier_file_to_ariba.py`: auto-detects input format, converts if needed, then runs `ariba_excel_import.py`.
 - `ariba_excel_import.py`: imports non-catalog items from Excel into SAP Ariba Buying.
 - `reichelt_offer_to_excel.py`: converts a Reichelt offer PDF into that Excel format.
 - `thorlabs_cart_to_excel.py`: converts a Thorlabs cart CSV into that Excel format.
 - `farnell_cart_to_excel.py`: converts a Farnell cart CSV into that Excel format.
 - `digikey_cart_to_excel.py`: converts a DigiKey cart Excel file into that Excel format.
 - `mouser_cart_to_excel.py`: converts a Mouser cart XLS file into that Excel format.
+
 
 The login/2FA step remains manual. The script attaches to your already logged-in browser tab.
 
@@ -194,6 +196,33 @@ Optional flags:
 
 - `--cdp-url` default: `http://127.0.0.1:9222`
 - `--page-contains` default: `ariba`
+
+## One-Step Submit Script
+
+Use this script when you want one command that:
+1. detects the supplier/input format,
+2. converts to Ariba Excel when needed,
+3. runs the Ariba upload automation.
+
+```powershell
+.\.venv\Scripts\python .\supplier_file_to_ariba.py --input ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf"
+```
+
+It supports:
+
+- Ariba-ready `.xlsx` (no conversion)
+- Reichelt `.pdf`
+- Thorlabs `.csv`
+- Farnell `.csv`
+- DigiKey `.xlsx`
+- Mouser `.xls`
+
+Useful optional flags:
+
+- `--converted-out` set explicit path for converted Excel output
+- `--cdp-url` default: `http://127.0.0.1:9222`
+- `--page-contains` default: `ariba`
+- `--detect-only` only print detected type and planned actions; do not run conversion/import
 
 ## Automated Ariba flow
 

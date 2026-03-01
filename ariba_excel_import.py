@@ -412,11 +412,11 @@ def run_import(page: Page, supplier_name: str, items: List[ItemRow]) -> None:
 
     total = len(items)
     for index, item in enumerate(items, start=1):
-        print(f"[{index}/{total}] Filling row {item.row_number}...")
+        print(f"[{index}/{total}] Filling item {index} into Ariba form...")
         ensure_supplier_selected(page, supplier_name)
         fill_one_item(page, item)
         click_add_to_cart(page)
-        print(f"[{index}/{total}] Added row {item.row_number} to cart.")
+        print(f"[{index}/{total}] Added item {index} to Ariba cart.")
 
         if index < total:
             create_new_item(page)
