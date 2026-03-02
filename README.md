@@ -60,6 +60,111 @@ Use this layout in the first worksheet:
 - `C1`: `WBS`
 - `C2`: WBS value (example: `C.2329.0320`)
 
+
+
+## Install
+
+Recommended on Windows PowerShell (no venv activation needed):
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python -m playwright install chromium
+```
+
+Optional (if you prefer activation):
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m playwright install chromium
+```
+
+## Start browser for manual login + 2FA
+
+Close existing Chrome/Edge windows first, then start one with remote debugging enabled.
+
+Chrome example:
+
+```powershell
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="$env:TEMP\quickariba-profile"
+```
+
+Edge example:
+
+```powershell
+& "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir="$env:TEMP\quickariba-profile"
+```
+
+Then log into Ariba in that browser and open the `Non-catalog request` page by pressing `Request a non catalog item +`.
+
+## One-Step Submit Script
+
+Use this script when you want one command that:
+1. detects the supplier/input format,
+2. converts to Ariba Excel when needed,
+3. runs the Ariba upload automation.
+
+The easiest way to run: prepare offer in file `order.*` and metadata in file `PaymentAndShipping.xlsx`, both in the same directory as the python scripts. 
+Then double-click `submit.bat`.
+
+Otherwise, specify file 
+
+```powershell
+.\submit.bat ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf"
+```
+
+which translates into
+
+```powershell
+.\.venv\Scripts\python .\supplier_file_to_ariba.py --input ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf"
+```
+
+If you omit `--input`, the script looks in its own folder for `order.*` and uses the newest match.
+
+It supports:
+
+- Ariba-ready `.xlsx` (no conversion)
+- Reichelt `.pdf`
+- Thorlabs `.csv`
+- Farnell `.csv`
+- DigiKey `.xlsx`
+- Mouser `.xls`
+
+Useful optional flags:
+
+- `--converted-out` set explicit path for converted Excel output
+- `--cdp-url` default: `http://127.0.0.1:9222`
+- `--page-contains` default: `ariba`
+- `--detect-only` only print detected type and planned actions; do not run conversion/import
+
+
+## Run importer
+
+If you want to submit an excel file in the [Excel format](#excel-format) outlined above, without conversion, you can directly run the Ariba excel importer.
+
+Recommended (no activation):
+
+```powershell
+.\.venv\Scripts\python .\ariba_excel_import.py --excel ".\orders.xlsx"
+```
+
+Optional (with activation):
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python .\ariba_excel_import.py --excel ".\orders.xlsx"
+```
+
+Optional flags:
+
+- `--cdp-url` default: `http://127.0.0.1:9222`
+- `--page-contains` default: `ariba`
+- `--payment-shipping` default: `.\PaymentAndShipping.xlsx`
+
+
+
 ## Reichelt PDF to Excel
 
 Use this script when you receive a Reichelt offer PDF and want to generate the Excel file for the importer.
@@ -172,96 +277,7 @@ Column mapping used:
 - Mouser `Besteld aantal` -> Excel `Quantity`
 - Mouser `Prijs (EUR)` -> Excel `Unit price`
 
-## Install
 
-Recommended on Windows PowerShell (no venv activation needed):
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements.txt
-.\.venv\Scripts\python -m playwright install chromium
-```
-
-Optional (if you prefer activation):
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python -m playwright install chromium
-```
-
-## Start browser for manual login + 2FA
-
-Close existing Chrome/Edge windows first, then start one with remote debugging enabled.
-
-Chrome example:
-
-```powershell
-& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="$env:TEMP\quickariba-profile"
-```
-
-Edge example:
-
-```powershell
-& "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir="$env:TEMP\quickariba-profile"
-```
-
-Then log into Ariba in that browser and open the `Non-catalog request` page by pressing `Request a non catalog item +`.
-
-## Run importer
-
-Recommended (no activation):
-
-```powershell
-.\.venv\Scripts\python .\ariba_excel_import.py --excel ".\orders.xlsx"
-```
-
-Optional (with activation):
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-python .\ariba_excel_import.py --excel ".\orders.xlsx"
-```
-
-Optional flags:
-
-- `--cdp-url` default: `http://127.0.0.1:9222`
-- `--page-contains` default: `ariba`
-- `--payment-shipping` default: `.\PaymentAndShipping.xlsx`
-
-## One-Step Submit Script
-
-Use this script when you want one command that:
-1. detects the supplier/input format,
-2. converts to Ariba Excel when needed,
-3. runs the Ariba upload automation.
-
-```powershell
-.\.venv\Scripts\python .\supplier_file_to_ariba.py --input ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf"
-```
-
-If you omit `--input`, the script looks in its own folder for `order.*` and uses the newest match.
-
-```powershell
-.\.venv\Scripts\python .\supplier_file_to_ariba.py
-```
-
-It supports:
-
-- Ariba-ready `.xlsx` (no conversion)
-- Reichelt `.pdf`
-- Thorlabs `.csv`
-- Farnell `.csv`
-- DigiKey `.xlsx`
-- Mouser `.xls`
-
-Useful optional flags:
-
-- `--converted-out` set explicit path for converted Excel output
-- `--cdp-url` default: `http://127.0.0.1:9222`
-- `--page-contains` default: `ariba`
-- `--detect-only` only print detected type and planned actions; do not run conversion/import
 
 ## Automated Ariba flow
 

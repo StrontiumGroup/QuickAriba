@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import shutil
 import subprocess
 import sys
@@ -183,7 +184,9 @@ def default_output_path(input_path: Path) -> Path:
 
 def run_command(command: List[str]) -> None:
     print("Running:", " ".join(f'"{p}"' if " " in p else p for p in command))
-    result = subprocess.run(command, check=False)
+    env = os.environ.copy()
+    env.setdefault("NODE_NO_WARNINGS", "1")
+    result = subprocess.run(command, check=False, env=env)
     if result.returncode != 0:
         raise RuntimeError(f"Command failed with exit code {result.returncode}.")
 
@@ -219,6 +222,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--input",
+        nargs="?",
+        const="",
         help=(
             "Path to supplier file or Ariba-ready XLSX. "
             "If omitted, the script looks for 'order.*' next to this script."
@@ -231,11 +236,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cdp-url", default="http://127.0.0.1:9222")
     parser.add_argument("--page-contains", default="ariba")
     parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug output in the downstream Ariba importer.",
+    )
+    parser.add_argument(
         "--detect-only",
         action="store_true",
         help="Only detect type and planned actions; do not run conversion/import.",
     )
     return parser.parse_args()
+
+
+def normalize_input_arg(raw_input: Optional[str]) -> Optional[str]:
+    if raw_input is None:
+        return None
+    value = raw_input.strip()
+    if not value:
+        return None
+    if value in {'""', "''"}:
+        return None
+    return value
 
 
 def auto_detect_order_input(base_dir: Path) -> Path:
@@ -258,8 +279,9 @@ def auto_detect_order_input(base_dir: Path) -> Path:
 def main() -> int:
     args = parse_args()
     base_dir = Path(__file__).resolve().parent
-    if args.input:
-        input_path = Path(args.input).expanduser().resolve()
+    normalized_input = normalize_input_arg(args.input)
+    if normalized_input:
+        input_path = Path(normalized_input).expanduser().resolve()
     else:
         try:
             input_path = auto_detect_order_input(base_dir)
@@ -309,6 +331,8 @@ def main() -> int:
         "--page-contains",
         args.page_contains,
     ]
+    if args.debug:
+        ariba_cmd.append("--debug")
     run_command(ariba_cmd)
     return 0
 

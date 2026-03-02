@@ -684,6 +684,14 @@ def safe_text(locator: Locator, timeout_ms: int = 700) -> str:
         return ""
 
 
+def safe_attr(locator: Locator, name: str, timeout_ms: int = 500) -> str:
+    try:
+        value = locator.get_attribute(name, timeout=timeout_ms)
+        return clean_text(value)
+    except Exception:
+        return ""
+
+
 def fill_first_input_near_label(
     page: Page,
     label: str,
@@ -801,7 +809,43 @@ def fill_requisition_header_fields(page: Page, meta: OrderMeta) -> None:
         )
         if not ok:
             raise RuntimeError("Could not fill requisition Deliver To.")
+        # Ariba occasionally keeps the field empty after a seemingly successful fill.
+        # If the inline validation still says "Deliver To must be set.", retry once or twice.
+        for _ in range(2):
+            page.wait_for_timeout(300)
+            if not has_visible_deliver_to_required_error(page, max_y=items_y if items_y > 0 else 10_000_000):
+                break
+            dbg("Header Deliver To validation still visible; retrying fill.")
+            ok = fill_requisition_header_field(
+                page,
+                label="Deliver To",
+                value=meta.deliver_to,
+                max_y=items_y if items_y > 0 else 10_000_000,
+            )
+            if not ok:
+                break
         dbg("Filled requisition header Deliver To.")
+
+
+def has_visible_deliver_to_required_error(page: Page, max_y: float) -> bool:
+    msg = page.locator("text=/Deliver To\\s+must be set\\./i")
+    try:
+        count = msg.count()
+    except PlaywrightError:
+        return False
+    for i in range(count):
+        err = msg.nth(i)
+        try:
+            if not err.is_visible():
+                continue
+            box = err.bounding_box()
+            if box is None:
+                continue
+            if box["y"] < max_y:
+                return True
+        except PlaywrightError:
+            continue
+    return False
 
 
 def fill_requisition_header_field(page: Page, label: str, value: str, max_y: float) -> bool:
@@ -941,50 +985,109 @@ def fill_item_fields_on_requisition(page: Page, meta: OrderMeta, expected_items:
 
     # Need-by Date and Deliver To are filled once in header and then inherited by items.
     attempts_without_progress = 0
+    zero_banner_rounds = 0
     filled_shipto = 0
     filled_wbs = 0
     if not meta.wbs:
         dbg("WBS is empty; skipping Accounting/WBS automation.")
-    max_rounds = max(60, expected_items * 10)
+    max_rounds = max(55, expected_items * 10)
 
     for round_idx in range(max_rounds):
         progress = 0
+        round_start = time.monotonic()
+        expanded = 0
+        extra_shipto = 0
+        extra_wbs = 0
+        scroll_delta = 0
         dbg(
             f"Requisition item round start: no-progress={attempts_without_progress}, "
             f"filled_shipto={filled_shipto}, filled_wbs={filled_wbs}"
         )
 
-        remaining = count_visible_item_error_banners(page, min_y=items_y)
-        dbg(f"Visible item error banners: {remaining}")
+        remaining_before = count_visible_item_error_banners(page, min_y=items_y)
+        dbg(f"Visible item error banners: {remaining_before}")
 
-        progress_shipto, progress_wbs = process_visible_items_with_errors(page, meta, min_y=items_y)
+        progress_shipto, progress_wbs = process_visible_items_with_errors(
+            page,
+            meta,
+            min_y=items_y,
+            include_all_visible_items=False,
+        )
         filled_shipto += progress_shipto
         filled_wbs += progress_wbs
         progress += progress_shipto + progress_wbs
 
-        # Only try to expand more rows when we did not modify any visible fields this round.
+        # Only try to expand more rows when no visible warning row was fixed in this round.
         if progress == 0:
             expanded = click_visible_item_expanders(page, min_y=items_y)
             progress += expanded
             if expanded:
                 dbg(f"Expanded rows this round: {expanded}")
 
-        # Keep scanning vertically because Ariba virtualizes rows and can hide unresolved items.
+        # Fallback sweep: only after repeated no-progress rounds, widen scope beyond warning rows.
+        if progress == 0 and attempts_without_progress >= 3:
+            extra_shipto, extra_wbs = process_visible_items_with_errors(
+                page,
+                meta,
+                min_y=items_y,
+                include_all_visible_items=True,
+            )
+            filled_shipto += extra_shipto
+            filled_wbs += extra_wbs
+            progress += extra_shipto + extra_wbs
+            if extra_shipto or extra_wbs:
+                dbg(
+                    "Fallback broad pass changed "
+                    f"ShipTo={extra_shipto}, WBS={extra_wbs}."
+                )
+
+        # Prioritize current viewport first: warning rows can appear after expanding/filling.
+        # Scroll only when a round made no progress.
         try:
             if progress > 0:
-                # Move gently downward to the next item directly below the one just handled.
-                page.mouse.wheel(0, 360)
-                dbg("Stepped down to next nearby item row.")
+                dbg("Progress made; re-checking current viewport before scrolling.")
             else:
-                # No progress: keep moving down; periodically jump to top and rescan.
-                if attempts_without_progress > 0 and attempts_without_progress % 5 == 0:
-                    page.mouse.wheel(0, -5000)
+                # No progress: use small steps to avoid skipping alternating rows.
+                # Periodically jump near top for a fresh pass over virtualized items.
+                if attempts_without_progress > 0 and attempts_without_progress % 6 == 0:
+                    scroll_delta = -2200
+                    page.mouse.wheel(0, scroll_delta)
                     dbg("Jumped to top for full rescan.")
                 else:
-                    page.mouse.wheel(0, 900)
-                    dbg("Scrolled down to scan later item rows.")
+                    scroll_delta = 320
+                    page.mouse.wheel(0, scroll_delta)
+                    dbg("Scrolled down slightly to scan adjacent item rows.")
         except PlaywrightError:
             pass
+
+        remaining_after = count_visible_item_error_banners(page, min_y=items_y)
+        if remaining_after == 0:
+            zero_banner_rounds += 1
+        else:
+            zero_banner_rounds = 0
+        if DEBUG:
+            round_elapsed = time.monotonic() - round_start
+            print(
+                "[DEBUG] round "
+                f"{round_idx + 1}/{max_rounds}: "
+                f"before={remaining_before}, after={remaining_after}, "
+                f"shipto+={progress_shipto}, wbs+={progress_wbs}, "
+                f"expanded={expanded}, fallback_shipto+={extra_shipto}, fallback_wbs+={extra_wbs}, "
+                f"scroll={scroll_delta}, progress={progress}, "
+                f"no_progress_streak={attempts_without_progress}, "
+                f"elapsed={round_elapsed:.1f}s"
+            )
+
+        # Fast exit: no visible item errors and expected item coverage reached.
+        # This avoids long post-completion scans.
+        shipto_done = (expected_items <= 0) or (filled_shipto >= expected_items)
+        wbs_done = (not meta.wbs) or (expected_items <= 0) or (filled_wbs >= expected_items)
+        if zero_banner_rounds >= 1 and shipto_done and wbs_done:
+            dbg(
+                "Stopping item-field loop early: no visible error banners and "
+                f"coverage reached (ShipTo={filled_shipto}/{expected_items}, WBS={filled_wbs}/{expected_items})."
+            )
+            break
 
         if progress == 0:
             attempts_without_progress += 1
@@ -992,7 +1095,7 @@ def fill_item_fields_on_requisition(page: Page, meta: OrderMeta, expected_items:
         else:
             attempts_without_progress = 0
 
-        if attempts_without_progress >= 20:
+        if attempts_without_progress >= 22:
             dbg("Stopping item-field loop: repeated no-progress rounds.")
             break
 
@@ -1000,19 +1103,12 @@ def fill_item_fields_on_requisition(page: Page, meta: OrderMeta, expected_items:
         "Filled item-level fields on requisition: "
         f"Need-by Date=header-only, Deliver To=header-only, ShipTo(Plant)={filled_shipto}, WBS={filled_wbs}"
     )
-    shipto_set = count_item_shipto_matches(page, min_y=items_y)
     remaining = count_visible_item_error_banners(page, min_y=items_y)
     dbg(
-        f"Final item field coverage: ShipTo={shipto_set}/{expected_items}, "
+        f"Final item field coverage: "
         f"WBS={filled_wbs}/{expected_items}, remaining-error-banners={remaining}"
     )
 
-    # Visibility-based count is a lower bound because Ariba may virtualize row rendering.
-    if expected_items > 0 and shipto_set < expected_items and filled_shipto < expected_items:
-        print(
-            f"Warning: visible ShipTo coverage is {shipto_set}/{expected_items}. "
-            "Ariba may have non-visible rows; please verify before submit."
-        )
     if expected_items > 0 and meta.wbs and filled_wbs < expected_items:
         print(
             f"Warning: could not set item WBS for all items (set {filled_wbs}/{expected_items}). "
@@ -1046,43 +1142,19 @@ def count_visible_item_error_banners(page: Page, min_y: float) -> int:
     return visible
 
 
-def process_visible_items_with_errors(page: Page, meta: OrderMeta, min_y: float) -> tuple[int, int]:
+def process_visible_items_with_errors(
+    page: Page,
+    meta: OrderMeta,
+    min_y: float,
+    include_all_visible_items: bool = False,
+) -> tuple[int, int]:
     shipto_changed = 0
     wbs_changed = 0
-    # Work from visible error banners first; this is the most reliable anchor
-    # for rows that still need Account Assignment/WBS/ShipTo fixes.
+    # Prefer explicit visible item roots. Banner ancestor chains can be unstable in some Ariba layouts.
     item_containers: List[tuple[float, Locator]] = []
     seen_item_y: List[float] = []
-    banners = page.locator("span:has-text('This item contains missing or incorrect information.'):visible")
-    try:
-        bcount = banners.count()
-    except PlaywrightError:
-        bcount = 0
-    for i in range(bcount):
-        b = banners.nth(i)
-        try:
-            if not b.is_visible():
-                continue
-            box = b.bounding_box()
-            if box is None or box["y"] <= min_y:
-                continue
-            item = b.locator(
-                "xpath=ancestor::*[contains(@class,'line-item-container') or contains(@class,'item line-item-container') or starts-with(@aria-label,'Item ')][1]"
-            ).first
-            if item.count() == 0:
-                continue
-            ibox = item.bounding_box()
-            if ibox is None:
-                continue
-            if any(abs(ibox["y"] - y) < 6 for y in seen_item_y):
-                continue
-            seen_item_y.append(ibox["y"])
-            item_containers.append((ibox["y"], item))
-        except PlaywrightError:
-            continue
-
-    # Also include item containers directly, regardless of current banner visibility.
-    items = page.locator("[aria-label^='Item '], div[class*='line-item-container-']")
+    seen_item_ids: set[str] = set()
+    items = page.locator("[aria-label^='Item ']:visible")
     try:
         count = items.count()
     except PlaywrightError:
@@ -1097,25 +1169,108 @@ def process_visible_items_with_errors(page: Page, meta: OrderMeta, min_y: float)
                 continue
             if any(abs(box["y"] - y) < 6 for y in seen_item_y):
                 continue
+            item_text_low = safe_text(item, timeout_ms=900).lower()
+            has_error = "this item contains missing or incorrect information" in item_text_low
+            if not include_all_visible_items and not has_error:
+                continue
+            item_id = safe_attr(item, "aria-label")
+            if item_id:
+                if item_id in seen_item_ids:
+                    continue
+                seen_item_ids.add(item_id)
             seen_item_y.append(box["y"])
             item_containers.append((box["y"], item))
         except PlaywrightError:
             continue
 
+    # Some Ariba builds do not expose every row with aria-label='Item ...'.
+    # Include visible line-item containers too, with the same filtering rules.
+    containers = page.locator("div[class*='line-item-container-']:visible")
+    try:
+        ccount = containers.count()
+    except PlaywrightError:
+        ccount = 0
+    for i in range(ccount):
+        item = containers.nth(i)
+        try:
+            if not item.is_visible():
+                continue
+            box = item.bounding_box()
+            if box is None or box["y"] <= min_y:
+                continue
+            if any(abs(box["y"] - y) < 6 for y in seen_item_y):
+                continue
+            item_text_low = safe_text(item, timeout_ms=900).lower()
+            has_error = "this item contains missing or incorrect information" in item_text_low
+            if not include_all_visible_items and not has_error:
+                continue
+            item_id = safe_attr(item, "aria-label")
+            if item_id:
+                if item_id in seen_item_ids:
+                    continue
+                seen_item_ids.add(item_id)
+            seen_item_y.append(box["y"])
+            item_containers.append((box["y"], item))
+        except PlaywrightError:
+            continue
+
+    # If no explicit error rows were discovered, use banner Y-position as a fallback anchor.
+    if not item_containers and not include_all_visible_items:
+        banners = page.locator("span:has-text('This item contains missing or incorrect information.'):visible")
+        try:
+            bcount = banners.count()
+        except PlaywrightError:
+            bcount = 0
+        for i in range(bcount):
+            b = banners.nth(i)
+            try:
+                if not b.is_visible():
+                    continue
+                box = b.bounding_box()
+                if box is None or box["y"] <= min_y:
+                    continue
+                nearest = nearest_visible_item_by_y(page, box["y"], min_y=min_y)
+                if nearest is None:
+                    continue
+                nbox = nearest.bounding_box()
+                if nbox is None:
+                    continue
+                item_id = safe_attr(nearest, "aria-label")
+                if item_id:
+                    if item_id in seen_item_ids:
+                        continue
+                    seen_item_ids.add(item_id)
+                if any(abs(nbox["y"] - y) < 6 for y in seen_item_y):
+                    continue
+                seen_item_y.append(nbox["y"])
+                item_containers.append((nbox["y"], nearest))
+            except PlaywrightError:
+                continue
+
     # Process strictly top-to-bottom on screen.
     item_containers.sort(key=lambda t: t[0])
-    for _, item in item_containers:
+    for item_y, item in item_containers:
+        item_label = safe_attr(item, "aria-label")
+        dbg(f"Processing item container near y={item_y:.0f}, label='{item_label}'")
         try:
             item.scroll_into_view_if_needed(timeout=1200)
-            page.wait_for_timeout(500)
+            page.wait_for_timeout(180)
         except PlaywrightError:
             pass
 
-        opened = ensure_item_details_open(item, page)
+        opened = ensure_item_details_open(item, page, item_y_hint=item_y)
+        if not opened:
+            # Retry with nearest visible explicit item root for this Y.
+            nearest = nearest_visible_item_by_y(page, item_y, min_y=min_y)
+            if nearest is not None:
+                item = nearest
+                item_label = safe_attr(item, "aria-label")
+                dbg(f"Retrying open on nearest explicit item near y={item_y:.0f}, label='{item_label}'")
+                opened = ensure_item_details_open(item, page, item_y_hint=item_y)
         if opened:
-            page.wait_for_timeout(500)
+            page.wait_for_timeout(180)
         else:
-            dbg("Could not confirm item details opened for one error row; will continue scanning.")
+            dbg(f"Could not confirm item details opened for item near y={item_y:.0f}; continuing scan.")
             continue
 
         if set_item_shipto_in_scope(page, item):
@@ -1126,23 +1281,42 @@ def process_visible_items_with_errors(page: Page, meta: OrderMeta, min_y: float)
     return shipto_changed, wbs_changed
 
 
-def ensure_item_details_open(item: Locator, page: Page) -> bool:
-    def is_open() -> bool:
+def ensure_item_details_open(item: Locator, page: Page, item_y_hint: Optional[float] = None) -> bool:
+    def is_locator_visible(locator: Locator) -> bool:
         try:
-            return item.locator("span.heading:has-text('Accounting')").count() > 0
+            count = locator.count()
         except PlaywrightError:
             return False
+        for i in range(min(count, 4)):
+            try:
+                if locator.nth(i).is_visible():
+                    return True
+            except PlaywrightError:
+                continue
+        return False
+
+    def is_open() -> bool:
+        return (
+            is_locator_visible(item.locator("span.heading:has-text('Accounting')"))
+            or is_locator_visible(item.locator("xpath=.//*[contains(normalize-space(.), 'Account Assignment')]"))
+            or is_locator_visible(item.locator("button[role='combobox'][data-help-id*='-AccountCategory']"))
+            or is_locator_visible(item.locator("button[role='combobox'][data-help-id*='-WBSElement']"))
+            or is_locator_visible(item.locator("button[role='combobox'][data-help-id*='-ShipTo']"))
+        )
 
     if is_open():
         return True
 
-    for _ in range(2):
+    for _ in range(3):
         # Primary method from recorder.
         try:
-            toggle = item.get_by_role("button", name=re.compile("Toggle item details", re.IGNORECASE)).first
+            toggle = item.get_by_role(
+                "button",
+                name=re.compile("Toggle item details|Expand item details|Expand", re.IGNORECASE),
+            ).first
             if toggle.count() > 0 and toggle.is_visible():
                 toggle.click(timeout=1300)
-                page.wait_for_timeout(1500)
+                page.wait_for_timeout(700)
                 if is_open():
                     return True
         except PlaywrightError:
@@ -1163,21 +1337,122 @@ def ensure_item_details_open(item: Locator, page: Page) -> bool:
         except PlaywrightError:
             pass
 
-        # Last resort: click near the left edge of the item row.
+        # Fallback: click the warning text that asks to expand details.
         try:
-            box = item.bounding_box()
-            if box is not None:
-                page.mouse.click(box["x"] + 12, box["y"] + 70)
-                page.wait_for_timeout(1300)
+            warning_expand = item.locator(
+                "xpath=.//*[contains(normalize-space(.), 'Expand to review the fields highlighted in red')]"
+            ).first
+            if warning_expand.count() > 0 and warning_expand.is_visible():
+                warning_expand.click(timeout=1200)
+                page.wait_for_timeout(700)
                 if is_open():
                     return True
         except PlaywrightError:
             pass
 
+        # Last resort: click near the left edge of the item row.
+        try:
+            box = item.bounding_box()
+            if box is not None:
+                page.mouse.click(box["x"] + 14, box["y"] + min(70, max(20, box["height"] / 2)))
+                page.wait_for_timeout(700)
+                if is_open():
+                    return True
+        except PlaywrightError:
+            pass
+
+        # Final fallback: click nearest visible left-side expander around this item Y.
+        target_y = item_y_hint
+        if target_y is None:
+            try:
+                box = item.bounding_box()
+                target_y = box["y"] if box else None
+            except PlaywrightError:
+                target_y = None
+        if target_y is not None and click_nearest_item_expander_by_y(page, float(target_y)):
+            page.wait_for_timeout(750)
+            if is_open():
+                return True
+
     return False
 
 
+def click_nearest_item_expander_by_y(page: Page, target_y: float) -> bool:
+    candidates = page.locator(
+        "xpath=("
+        "//*[self::button or self::a or self::span or self::i]"
+        "[contains(@aria-label,'Toggle item details') or contains(@aria-label,'Expand') "
+        "or contains(@title,'Expand') or contains(@class,'icon-slim-arrow-right') "
+        "or contains(@class,'icon-slim-arrow-left') or contains(@class,'arrow-right') "
+        "or contains(@class,'chevron-right') or normalize-space(text())='>']"
+        "| //*[@role='button' and (contains(@aria-label,'Toggle') or contains(@aria-label,'Expand') or contains(@title,'Expand'))]"
+        ")"
+    )
+    try:
+        count = candidates.count()
+    except PlaywrightError:
+        return False
+
+    best = None
+    best_dist = 10_000.0
+    for i in range(min(count, 140)):
+        c = candidates.nth(i)
+        try:
+            if not c.is_visible():
+                continue
+            box = c.bounding_box()
+            if box is None:
+                continue
+            if box["x"] > 220:
+                continue
+            dist = abs(box["y"] - target_y)
+            if dist > 220:
+                continue
+            if dist < best_dist:
+                best_dist = dist
+                best = c
+        except PlaywrightError:
+            continue
+
+    if best is None:
+        return False
+    try:
+        best.click(timeout=1200)
+        return True
+    except PlaywrightError:
+        return False
+
+
+def nearest_visible_item_by_y(page: Page, target_y: float, min_y: float = -1.0) -> Optional[Locator]:
+    items = page.locator("[aria-label^='Item ']")
+    try:
+        count = items.count()
+    except PlaywrightError:
+        return None
+
+    best = None
+    best_dist = 10_000.0
+    for i in range(min(count, 160)):
+        item = items.nth(i)
+        try:
+            if not item.is_visible():
+                continue
+            box = item.bounding_box()
+            if box is None or box["y"] <= min_y:
+                continue
+            dist = abs(box["y"] - target_y)
+            if dist > 260:
+                continue
+            if dist < best_dist:
+                best_dist = dist
+                best = item
+        except PlaywrightError:
+            continue
+    return best
+
+
 def set_item_shipto_in_scope(page: Page, item: Locator) -> bool:
+    dbg("Attempting ShipTo set in current item scope.")
     control = item.locator("button[role='combobox'][data-help-id*='-ShipTo']").first
     try:
         if control.count() == 0 or not control.is_visible():
@@ -1193,6 +1468,7 @@ def set_item_shipto_in_scope(page: Page, item: Locator) -> bool:
         control.click(timeout=1200)
         page.wait_for_timeout(1400)
     except PlaywrightError:
+        dbg("ShipTo control click failed.")
         return False
 
     option = page.locator(
@@ -1205,6 +1481,7 @@ def set_item_shipto_in_scope(page: Page, item: Locator) -> bool:
         option.click(timeout=1800)
         page.wait_for_timeout(1400)
     except PlaywrightError:
+        dbg("ShipTo option selection failed.")
         return False
 
     now = clean_text(control.text_content())
@@ -1212,6 +1489,7 @@ def set_item_shipto_in_scope(page: Page, item: Locator) -> bool:
 
 
 def set_item_wbs_in_scope(page: Page, item: Locator, wbs: str) -> bool:
+    dbg("Attempting WBS set in current item scope.")
     accounting_button = item.get_by_role("button", name=re.compile("^Accounting collapsed$", re.IGNORECASE)).first
     try:
         if accounting_button.count() > 0 and accounting_button.is_visible():
@@ -1223,6 +1501,7 @@ def set_item_wbs_in_scope(page: Page, item: Locator, wbs: str) -> bool:
     account_control = item.get_by_role("combobox", name=re.compile("Account Assignment", re.IGNORECASE)).first
     try:
         if account_control.count() == 0 or not account_control.is_visible():
+            dbg("Account Assignment control not visible in this item scope.")
             return False
     except PlaywrightError:
         return False
@@ -1256,6 +1535,7 @@ def set_item_wbs_in_scope(page: Page, item: Locator, wbs: str) -> bool:
                 p_option.evaluate("el => el.click()")
             page.wait_for_timeout(1500)
         except PlaywrightError:
+            dbg("Selecting Account Assignment 'P (Project)' failed.")
             return False
         except Exception:
             return False
@@ -1268,6 +1548,7 @@ def set_item_wbs_in_scope(page: Page, item: Locator, wbs: str) -> bool:
         wbs_control = item.get_by_role("combobox", name=re.compile("Project/WBS", re.IGNORECASE)).first
     try:
         if wbs_control.count() == 0 or not wbs_control.is_visible():
+            dbg("WBS control not visible in this item scope.")
             return False
     except PlaywrightError:
         return False
@@ -1284,6 +1565,7 @@ def set_item_wbs_in_scope(page: Page, item: Locator, wbs: str) -> bool:
             wbs_control.evaluate("el => el.click()")
             page.wait_for_timeout(1400)
         except Exception:
+            dbg("WBS dropdown open failed.")
             return False
 
     # Scope option lookup to same chooser when possible.
@@ -1322,6 +1604,7 @@ def set_item_wbs_in_scope(page: Page, item: Locator, wbs: str) -> bool:
         choose_btn.click(timeout=2200)
         page.wait_for_timeout(2300)
     except PlaywrightError:
+        dbg("WBS modal/chooser path failed; trying direct option fallback.")
         # Fallback: direct option in open dropdown if modal path fails.
         direct_option = chooser.locator(
             "a.user-choice[data-help-id*='-WBSElement-']",
@@ -1338,6 +1621,7 @@ def set_item_wbs_in_scope(page: Page, item: Locator, wbs: str) -> bool:
             direct_option.click(timeout=1800)
             page.wait_for_timeout(1800)
         except PlaywrightError:
+            dbg("Direct WBS option fallback failed.")
             return False
 
     final_wbs_text = safe_text(wbs_control).lower()
