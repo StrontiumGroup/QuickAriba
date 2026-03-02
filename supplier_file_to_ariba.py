@@ -41,13 +41,23 @@ def detect_ariba_xlsx(path: Path) -> bool:
     except Exception:
         return False
 
-    if clean_text(ws["A1"].value).lower() != "supplier name":
+    a1 = clean_text(ws["A1"].value).lower()
+    if a1 != "supplier name":
         return False
-    headers = [clean_text(ws.cell(row=3, column=c).value) for c in range(1, 5)]
-    if headers != ARIBA_HEADERS:
-        return False
-    first_data = [clean_text(ws.cell(row=4, column=c).value) for c in range(1, 5)]
-    return any(first_data)
+
+    # New layout: metadata in rows 1-2, headers row 4, data row 5.
+    new_headers = [clean_text(ws.cell(row=4, column=c).value) for c in range(1, 5)]
+    if new_headers == ARIBA_HEADERS:
+        first_data = [clean_text(ws.cell(row=5, column=c).value) for c in range(1, 5)]
+        return any(first_data)
+
+    # Legacy layout: headers row 3, data row 4.
+    old_headers = [clean_text(ws.cell(row=3, column=c).value) for c in range(1, 5)]
+    if old_headers == ARIBA_HEADERS:
+        first_data = [clean_text(ws.cell(row=4, column=c).value) for c in range(1, 5)]
+        return any(first_data)
+
+    return False
 
 
 def detect_digikey_xlsx(path: Path) -> bool:
@@ -207,7 +217,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Detect supplier cart/offer file, convert if needed, and run Ariba import."
     )
-    parser.add_argument("--input", required=True, help="Path to supplier file or Ariba-ready XLSX.")
+    parser.add_argument(
+        "--input",
+        help=(
+            "Path to supplier file or Ariba-ready XLSX. "
+            "If omitted, the script looks for 'order.*' next to this script."
+        ),
+    )
     parser.add_argument(
         "--converted-out",
         help="Optional output .xlsx path when conversion is needed.",
@@ -222,14 +238,37 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def auto_detect_order_input(base_dir: Path) -> Path:
+    candidates = [p for p in base_dir.glob("order.*") if p.is_file()]
+    if not candidates:
+        raise FileNotFoundError(
+            f"No input was provided and no 'order.*' file was found in: {base_dir}"
+        )
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    if len(candidates) > 1:
+        print(
+            "No --input provided; multiple 'order.*' files found. "
+            f"Using newest: {candidates[0].name}"
+        )
+    else:
+        print(f"No --input provided; using: {candidates[0].name}")
+    return candidates[0]
+
+
 def main() -> int:
     args = parse_args()
-    input_path = Path(args.input).expanduser().resolve()
+    base_dir = Path(__file__).resolve().parent
+    if args.input:
+        input_path = Path(args.input).expanduser().resolve()
+    else:
+        try:
+            input_path = auto_detect_order_input(base_dir)
+        except FileNotFoundError as exc:
+            print(exc)
+            return 2
     if not input_path.exists():
         print(f"Input file not found: {input_path}")
         return 2
-
-    base_dir = Path(__file__).resolve().parent
     kind = detect_input_kind(input_path)
     print(f"Detected input type: {kind}")
 

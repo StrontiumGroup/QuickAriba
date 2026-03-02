@@ -47,6 +47,19 @@ Use this exact layout in the first worksheet:
 
 The script stops when it reaches the first completely empty data row.
 
+## PaymentAndShipping file
+
+`ariba_excel_import.py` also reads checkout metadata from `PaymentAndShipping.xlsx` (default: same folder as the Python scripts).
+
+Use this layout in the first worksheet:
+
+- `A1`: `Need-by-date`
+- `A2`: date value (example: `20.3.2026`)
+- `B1`: `Deliver to`
+- `B2`: deliver-to value (example: `SP D0.136`)
+- `C1`: `WBS`
+- `C2`: WBS value (example: `C.2329.0320`)
+
 ## Reichelt PDF to Excel
 
 Use this script when you receive a Reichelt offer PDF and want to generate the Excel file for the importer.
@@ -215,6 +228,7 @@ Optional flags:
 
 - `--cdp-url` default: `http://127.0.0.1:9222`
 - `--page-contains` default: `ariba`
+- `--payment-shipping` default: `.\PaymentAndShipping.xlsx`
 
 ## One-Step Submit Script
 
@@ -225,6 +239,12 @@ Use this script when you want one command that:
 
 ```powershell
 .\.venv\Scripts\python .\supplier_file_to_ariba.py --input ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf"
+```
+
+If you omit `--input`, the script looks in its own folder for `order.*` and uses the newest match.
+
+```powershell
+.\.venv\Scripts\python .\supplier_file_to_ariba.py
 ```
 
 It supports:
