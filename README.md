@@ -7,7 +7,10 @@ Use this when you want to quickly submit an order to Ariba.
 1. One-time setup: create `.venv` and install dependencies (see [Install](#install)).
 2. Double-click `chrome.bat` to start Chrome with remote debugging.
 3. In that Chrome window, log in to Ariba and open `Request a non catalog item +`.
-4. Run `submit.bat "<path-to-offer-file>"` from PowerShell, for example:
+4. Put payment and shipping metadata in `PaymentAndShipping.xlsx`.
+5. Rename your offer file to `order.*` and place it in the same folder as the Python scripts and double-click `submit.bat`. 
+ 
+Alternatively to 5., run `submit.bat "<path-to-offer-file>"` from PowerShell, for example:
 
 ```powershell
 .\submit.bat ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf"
