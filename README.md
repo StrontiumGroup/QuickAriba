@@ -167,6 +167,14 @@ Optional flags:
 - `--payment-shipping` default: `.\PaymentAndShipping.xlsx`
 
 
+## Adding a new supplier
+
+Copy an example offer into the folder ExampleOffersFromSuppliers. This offer can have any format, e.g. csv, xlsx, pdf, txt etc. Install Codex or Claude Code in e.g. Visual Studio Code. Clone this repository. Then prompt the coding agent e.g. as follows:
+
+"Please add a python script that converts [Name of company as in Ariba] [shopping carts/offers] (see Example[CompanyName].pdf/xlsx/...) into the format that the Ariba upload python script needs (see *_cart_to_excel.py for examples). Use "[column header in offer of what you want as Ariba product name]" as "Product name" and "[column header in offer of what you want as Ariba description; you can ask to merge several column entries]" as "Description", "[column header in offer of what you want as Ariba quantity]" as "Quantity" and "[column header in offer of what you want as Ariba unit price]" as "Unit price". Next, update the orchestration script supplier_file_to_ariba.py so that it recognizes and distinguishes this new type of input file, calls the new conversion script and then ariba_excel_import.py. Finally update README.md with information about the new conversion script."
+
+Once the agent has finished, test a submission. If there are errors, simply copy the error messages into the coding agent prompt. Once everything works, push the new version of QuickAriba to GitHub, so that everyone can profit from this upgrade.
+
 
 ## Reichelt PDF to Excel
 
