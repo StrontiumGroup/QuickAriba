@@ -5,8 +5,9 @@ Import non-catalog line items from Excel into SAP Ariba Buying.
 Expected order Excel layout:
 - A1: Supplier name
 - B1: Supplier value (for example "Reichelt" or "Thorlabs")
-- Row 3 headers: Product name | Description | Quantity | Unit price
-- Data starts at row 4
+- Headers on row 3 (legacy) or row 4 (new):
+  Product name | Description | Quantity | Unit price
+- Data starts on the row directly below the headers
 
 Additional required metadata file (searched next to this script first, then one folder up):
 - PaymentAndShipping.xlsx
@@ -35,8 +36,8 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Locator, Page, TimeoutError, sync_playwright
 
 
-HEADER_ROW = 3
-DATA_START_ROW = 4
+LEGACY_HEADER_ROW = 3
+NEW_HEADER_ROW = 4
 REQUIRED_HEADERS = ["Product name", "Description", "Quantity", "Unit price"]
 ITEM_SHIPTO_TARGET_PREFIX = "0006 (UvA"
 DEBUG = False
@@ -113,6 +114,17 @@ def normalize_number_text(value: object, field_name: str, row_number: int) -> st
     return format(decimal.normalize(), "f")
 
 
+def detect_order_header_row(ws) -> int:
+    for header_row in (NEW_HEADER_ROW, LEGACY_HEADER_ROW):
+        headers = [clean_text(ws.cell(row=header_row, column=i).value) for i in range(1, 5)]
+        if headers == REQUIRED_HEADERS:
+            return header_row
+    raise ValueError(
+        "Could not find required headers. Expected row 3 or row 4 with: "
+        + ", ".join(REQUIRED_HEADERS)
+    )
+
+
 def load_items_from_excel(excel_path: Path) -> tuple[OrderMeta, List[ItemRow]]:
     wb = load_workbook(excel_path, data_only=True)
     ws = wb.active
@@ -121,8 +133,8 @@ def load_items_from_excel(excel_path: Path) -> tuple[OrderMeta, List[ItemRow]]:
     need_by_date = ""
     deliver_to = ""
     wbs = ""
-    header_row = HEADER_ROW
-    data_start_row = DATA_START_ROW
+    header_row = detect_order_header_row(ws)
+    data_start_row = header_row + 1
 
     # Order file uses the original layout only.
     a1 = clean_text(ws["A1"].value).lower()
@@ -132,12 +144,6 @@ def load_items_from_excel(excel_path: Path) -> tuple[OrderMeta, List[ItemRow]]:
 
     if not supplier_name:
         raise ValueError("Supplier value is empty.")
-
-    headers = [clean_text(ws.cell(row=header_row, column=i).value) for i in range(1, 5)]
-    if headers != REQUIRED_HEADERS:
-        raise ValueError(
-            f"Row {header_row} headers must be exactly: {', '.join(REQUIRED_HEADERS)}."
-        )
 
     items: List[ItemRow] = []
     current_row = data_start_row
@@ -2323,7 +2329,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--excel",
         required=True,
-        help="Path to .xlsx file with Supplier name in A1/B1 and headers on row 3.",
+        help="Path to .xlsx file with Supplier name in A1/B1 and headers on row 3 or 4.",
     )
     parser.add_argument(
         "--cdp-url",

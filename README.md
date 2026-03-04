@@ -44,16 +44,16 @@ This project contains the following scripts in the `Python` folder:
 
 ## Excel format
 
-Use this exact layout in the first worksheet:
+Use this layout in the first worksheet:
 
 - `A1`: `Supplier name`
 - `B1`: supplier value (example: `Reichelt`, `Thorlabs`)
-- Row `3` headers exactly:
+- Headers on row `3` (legacy) or row `4` (new):
   - `Product name`
   - `Description`
   - `Quantity`
   - `Unit price`
-- Data starts at row `4`
+- Data starts on the row directly below the headers
 
 The script stops when it reaches the first completely empty data row.
 
@@ -372,10 +372,10 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 - Browser was not started with remote debugging. Start Chrome/Edge with `--remote-debugging-port=9222` as shown above.
 - Make sure all old browser windows are closed before starting the debugging instance.
 
-`Excel validation error: Row 3 headers must be exactly ...`
+`Excel validation error: Could not find required headers ...`
 
-- Confirm row 3 is exactly: `Product name`, `Description`, `Quantity`, `Unit price`.
-- Confirm data starts at row 4.
+- Confirm row 3 or row 4 is exactly: `Product name`, `Description`, `Quantity`, `Unit price`.
+- Confirm data starts directly below the header row.
 
 `Supplier search found no match for '<name>'`
 
