@@ -40,7 +40,7 @@ def build_description(description: str, url: str) -> str:
     desc = html.unescape(description or "").strip()
     url = (url or "").strip()
     if url:
-        return f"{desc}\n URL: {url}"
+        return f"{desc}\nURL: {url}"
     return desc
 
 

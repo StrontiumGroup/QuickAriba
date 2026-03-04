@@ -102,44 +102,93 @@ def iter_table_lines(full_text: str) -> Iterable[str]:
         # Skip wrapped header fragments and non-row table text.
         if normalized.strip() in {"of goods", "incl. vat"}:
             continue
+        if "of goods" in normalized and "incl. vat" in normalized:
+            continue
 
         yield line
+
+
+def split_item_and_description(lead: str) -> tuple[str, str] | tuple[None, None]:
+    # Some PDFs keep a wide gap between item and description; others collapse them.
+    lead_parts = re.split(r"\s{2,}", lead.strip())
+    if len(lead_parts) >= 2:
+        return clean_spaces(lead_parts[0]), clean_spaces(" ".join(lead_parts[1:]))
+
+    # Fix missing space in extraction, e.g. "HLDeveloper" -> "HL Developer".
+    normalized = re.sub(r"(?<=[A-Z0-9])(?=[A-Z][a-z])", " ", clean_spaces(lead))
+    tokens = normalized.split()
+    if len(tokens) < 2:
+        return None, None
+
+    # Item numbers are typically uppercase/digit tokens; description starts with lowercase text.
+    split_at = None
+    for idx, token in enumerate(tokens):
+        if re.search(r"[a-z]", token):
+            split_at = idx
+            break
+    if split_at is None or split_at == 0:
+        return None, None
+
+    item_no = clean_spaces(" ".join(tokens[:split_at]))
+    description = clean_spaces(" ".join(tokens[split_at:]))
+    if not item_no or not description:
+        return None, None
+    return item_no, description
+
+
+def parse_row_line(line: str) -> OfferItem | None:
+    parts = re.split(r"\s{2,}", line.strip())
+    if len(parts) < 5:
+        return None
+
+    category = clean_spaces(parts[-4])
+    quantity = clean_spaces(parts[-3])
+    price = clean_spaces(parts[-2])
+    lead = "  ".join(parts[:-4])
+
+    if not category.isdigit() or not quantity.isdigit():
+        return None
+
+    item_no, description = split_item_and_description(lead)
+    if not item_no or not description:
+        return None
+
+    unit_price = parse_euro_number(price)
+    if not re.fullmatch(r"\d+(?:\.\d+)?", unit_price):
+        return None
+
+    return OfferItem(
+        item_no=item_no,
+        description=description,
+        quantity=quantity,
+        unit_price=unit_price,
+    )
+
+
+def looks_like_item_number_suffix(text: str) -> bool:
+    return bool(
+        re.fullmatch(r"[A-Z0-9][A-Z0-9 ./\-]*", text)
+        and len(text.split()) <= 3
+        and any(ch.isdigit() for ch in text)
+    )
 
 
 def parse_table_lines(lines: Iterable[str]) -> List[OfferItem]:
     items: List[OfferItem] = []
 
     for line in lines:
-        parts = re.split(r"\s{2,}", line.strip())
-        if len(parts) < 6:
+        parsed = parse_row_line(line)
+        if parsed is not None:
+            items.append(parsed)
             continue
 
-        item_no = clean_spaces(parts[0])
-        description = clean_spaces(parts[1])
-        category = clean_spaces(parts[2])
-        quantity = clean_spaces(parts[3])
-        price = clean_spaces(parts[4])
-
-        if not category.isdigit():
+        continuation = clean_spaces(line)
+        if not continuation or not items:
             continue
-        if not quantity.isdigit():
-            continue
-
-        unit_price = parse_euro_number(price)
-        if not re.fullmatch(r"\d+(?:\.\d+)?", unit_price):
-            continue
-
-        if not item_no or not description:
-            continue
-
-        items.append(
-            OfferItem(
-                item_no=item_no,
-                description=description,
-                quantity=quantity,
-                unit_price=unit_price,
-            )
-        )
+        if looks_like_item_number_suffix(continuation):
+            items[-1].item_no = f"{items[-1].item_no} {continuation}"
+        else:
+            items[-1].description = clean_spaces(f"{items[-1].description} {continuation}")
 
     return items
 

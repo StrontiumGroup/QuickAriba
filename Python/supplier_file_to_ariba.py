@@ -168,7 +168,7 @@ def detect_input_kind(path: Path) -> str:
     return "unknown"
 
 
-def default_output_path(input_path: Path) -> Path:
+def default_output_path(input_path: Path, scripts_dir: Path) -> Path:
     stem = input_path.stem
     if stem.lower().startswith("example"):
         stem = stem[7:] or input_path.stem
@@ -179,7 +179,7 @@ def default_output_path(input_path: Path) -> Path:
         candidate = parent.parent / "ExampleOrdersForAriba"
         if candidate.exists():
             return candidate / filename
-    return parent / filename
+    return scripts_dir / filename
 
 
 def run_command(command: List[str]) -> None:
@@ -226,7 +226,7 @@ def parse_args() -> argparse.Namespace:
         const="",
         help=(
             "Path to supplier file or Ariba-ready XLSX. "
-            "If omitted, the script looks for 'order.*' next to this script."
+            "If omitted, the script looks for 'order.*' in the project root folder."
         ),
     )
     parser.add_argument(
@@ -259,11 +259,11 @@ def normalize_input_arg(raw_input: Optional[str]) -> Optional[str]:
     return value
 
 
-def auto_detect_order_input(base_dir: Path) -> Path:
-    candidates = [p for p in base_dir.glob("order.*") if p.is_file()]
+def auto_detect_order_input(root_dir: Path) -> Path:
+    candidates = [p for p in root_dir.glob("order.*") if p.is_file()]
     if not candidates:
         raise FileNotFoundError(
-            f"No input was provided and no 'order.*' file was found in: {base_dir}"
+            f"No input was provided and no 'order.*' file was found in: {root_dir}"
         )
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     if len(candidates) > 1:
@@ -278,13 +278,14 @@ def auto_detect_order_input(base_dir: Path) -> Path:
 
 def main() -> int:
     args = parse_args()
-    base_dir = Path(__file__).resolve().parent
+    scripts_dir = Path(__file__).resolve().parent
+    project_root = scripts_dir.parent
     normalized_input = normalize_input_arg(args.input)
     if normalized_input:
         input_path = Path(normalized_input).expanduser().resolve()
     else:
         try:
-            input_path = auto_detect_order_input(base_dir)
+            input_path = auto_detect_order_input(project_root)
         except FileNotFoundError as exc:
             print(exc)
             return 2
@@ -300,9 +301,15 @@ def main() -> int:
         return 2
 
     python_exe = sys.executable
-    converted_path = Path(args.converted_out).expanduser().resolve() if args.converted_out else default_output_path(input_path)
+    converted_path = (
+        Path(args.converted_out).expanduser().resolve()
+        if args.converted_out
+        else default_output_path(input_path, scripts_dir)
+    )
 
-    conversion_cmd = build_conversion_command(kind, input_path, converted_path, python_exe, base_dir)
+    conversion_cmd = build_conversion_command(
+        kind, input_path, converted_path, python_exe, scripts_dir
+    )
     ariba_input_path = input_path
 
     if args.detect_only:
@@ -323,7 +330,7 @@ def main() -> int:
 
     ariba_cmd = [
         python_exe,
-        str(base_dir / "ariba_excel_import.py"),
+        str(scripts_dir / "ariba_excel_import.py"),
         "--excel",
         str(ariba_input_path),
         "--cdp-url",

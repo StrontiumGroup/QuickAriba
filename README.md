@@ -2,13 +2,13 @@
 
 ## Quick start
 
-Use this when you want to quickly submit an order to Ariba.
+Use QuickAriba when you want to quickly submit an order to Ariba.
 
 1. One-time setup: create `.venv` and install dependencies (see [Install](#install)).
 2. Double-click `chrome.bat` to start Chrome with remote debugging.
 3. In that Chrome window, log in to Ariba and open `Request a non catalog item +`.
 4. Put payment and shipping metadata in `PaymentAndShipping.xlsx`.
-5. Rename your offer file to `order.*` and place it in the same folder as the Python scripts and double-click `submit.bat`. 
+5. Rename your offer file to `order.*` (e.g. `order.pdf` or `order.xlsx`) and place it in the repository root (same folder as `submit.bat`), then double-click `submit.bat`. 
  
 Alternatively to 5., run `submit.bat "<path-to-offer-file>"` from PowerShell, for example:
 
@@ -16,13 +16,14 @@ Alternatively to 5., run `submit.bat "<path-to-offer-file>"` from PowerShell, fo
 .\submit.bat ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf"
 ```
 
-`submit.bat` calls `supplier_file_to_ariba.py`, which auto-detects the supplier format, converts if needed, and fills the Ariba non-catalog request.
+`submit.bat` calls `Python/supplier_file_to_ariba.py`, which auto-detects the supplier format, converts if needed, and fills the Ariba non-catalog request.
 Read on to learn which supplier formats are supported. Use Codex or similar to add scripts for more suppliers.
 Alternatively: create an excel sheet in the [Excel format](#excel-format) described below and submit that excel sheet directly.
+This project was entirely vibecoded with Codex.
 
 ## Project overview
 
-This project contains:
+This project contains the following scripts in the `Python` folder:
 
 - `supplier_file_to_ariba.py`: auto-detects input format, converts if needed, then runs `ariba_excel_import.py`.
 - `ariba_excel_import.py`: imports non-catalog items from Excel into SAP Ariba Buying.
@@ -32,8 +33,6 @@ This project contains:
 - `digikey_cart_to_excel.py`: converts a DigiKey cart Excel file into that Excel format.
 - `mouser_cart_to_excel.py`: converts a Mouser cart XLS file into that Excel format.
 
-
-The login/2FA step remains manual. The script attaches to your already logged-in browser tab.
 
 ## Excel format
 
@@ -52,7 +51,7 @@ The script stops when it reaches the first completely empty data row.
 
 ## PaymentAndShipping file
 
-`ariba_excel_import.py` also reads checkout metadata from `PaymentAndShipping.xlsx` (default: same folder as the Python scripts).
+`Python/ariba_excel_import.py` also reads checkout metadata from `PaymentAndShipping.xlsx` (default: `.\Python\PaymentAndShipping.xlsx`, fallback: `.\PaymentAndShipping.xlsx`).
 
 Use this layout in the first worksheet:
 
@@ -86,15 +85,13 @@ python -m playwright install chromium
 
 ## Start browser for manual login + 2FA
 
-Close existing Chrome/Edge windows first, then start one with remote debugging enabled.
-
-Chrome example:
+Close existing Chrome/Edge windows first, then start one with remote debugging enabled. This is easiest done by double-clicking `chrome.bat`, which executes
 
 ```powershell
 & "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="$env:TEMP\quickariba-profile"
 ```
 
-Edge example:
+Alternatively you can use Edge:
 
 ```powershell
 & "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir="$env:TEMP\quickariba-profile"
@@ -109,7 +106,7 @@ Use this script when you want one command that:
 2. converts to Ariba Excel when needed,
 3. runs the Ariba upload automation.
 
-The easiest way to run: prepare offer in file `order.*` and metadata in file `PaymentAndShipping.xlsx`, both in the same directory as the python scripts. 
+The easiest way to run: prepare offer in file `order.*` in the repository root and metadata in `PaymentAndShipping.xlsx` in root (or in `.\Python\`). 
 Then double-click `submit.bat`.
 
 Otherwise, specify file 
@@ -121,10 +118,11 @@ Otherwise, specify file
 which translates into
 
 ```powershell
-.\.venv\Scripts\python .\supplier_file_to_ariba.py --input ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf"
+.\.venv\Scripts\python .\Python\supplier_file_to_ariba.py --input ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf"
 ```
 
-If you omit `--input`, the script looks in its own folder for `order.*` and uses the newest match.
+If you omit `--input`, the script looks in the repository root for `order.*` and uses the newest match.
+By default, converted files are written to `.\Python\orders_from_<inputname>.xlsx`.
 
 It supports:
 
@@ -150,30 +148,53 @@ If you want to submit an excel file in the [Excel format](#excel-format) outline
 Recommended (no activation):
 
 ```powershell
-.\.venv\Scripts\python .\ariba_excel_import.py --excel ".\orders.xlsx"
+.\.venv\Scripts\python .\Python\ariba_excel_import.py --excel ".\orders.xlsx"
 ```
 
 Optional (with activation):
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
-python .\ariba_excel_import.py --excel ".\orders.xlsx"
+python .\Python\ariba_excel_import.py --excel ".\orders.xlsx"
 ```
 
 Optional flags:
 
 - `--cdp-url` default: `http://127.0.0.1:9222`
 - `--page-contains` default: `ariba`
-- `--payment-shipping` default: `.\PaymentAndShipping.xlsx`
+- `--payment-shipping` default: `.\Python\PaymentAndShipping.xlsx` if present, else `.\PaymentAndShipping.xlsx`
 
 
 ## Adding a new supplier
 
-Copy an example offer into the folder ExampleOffersFromSuppliers. This offer can have any format, e.g. csv, xlsx, pdf, txt etc. Install Codex or Claude Code in e.g. Visual Studio Code. Clone this repository. Then prompt the coding agent e.g. as follows:
+Copy an example supplier file into `ExampleOffersFromSupplier` (csv/xlsx/xls/pdf/txt all fine). Open the project directory in Visual Studio Code. Make sure you have Codex or similar installed. Open the coding agent window and  use the prompt template below. If you want to do this without having to press "Yes" a lot, give the coding agent "Full access" instead of "Default permissions" in the pull down menu at the bottom of the coding agent window.
 
-"Please add a python script that converts [Name of company as in Ariba] [shopping carts/offers] (see Example[CompanyName].pdf/xlsx/...) into the format that the Ariba upload python script needs (see *_cart_to_excel.py for examples). Use "[column header in offer of what you want as Ariba product name]" as "Product name" and "[column header in offer of what you want as Ariba description; you can ask to merge several column entries]" as "Description", "[column header in offer of what you want as Ariba quantity]" as "Quantity" and "[column header in offer of what you want as Ariba unit price]" as "Unit price". Next, update the orchestration script supplier_file_to_ariba.py so that it recognizes and distinguishes this new type of input file, calls the new conversion script and then ariba_excel_import.py. Finally update README.md with information about the new conversion script."
+```text
+Please add support for [SUPPLIER NAME AS IN ARIBA].
 
-Once the agent has finished, test a submission. If there are errors, simply copy the error messages into the coding agent prompt. Once everything works, push the new version of QuickAriba to GitHub, so that everyone can profit from this upgrade.
+Input example file:
+- [PATH TO EXAMPLE FILE, e.g. ExampleOffersFromSupplier/ExampleAcmeCart.csv]
+
+Tasks:
+1) Create a new converter script in the Python folder named [supplier]_cart_to_excel.py (or [supplier]_offer_to_excel.py), following the style of existing *_cart_to_excel.py scripts.
+2) Map columns from the supplier file to Ariba format:
+   - Product name <- [SOURCE COLUMN]
+   - Description <- [SOURCE COLUMN(S); merge if needed]
+   - Quantity <- [SOURCE COLUMN]
+   - Unit price <- [SOURCE COLUMN]
+3) Update Python/supplier_file_to_ariba.py so it:
+   - detects this new supplier format reliably,
+   - calls the new converter,
+   - then calls Python/ariba_excel_import.py.
+4) Update README.md:
+   - add this supplier to the supported list,
+   - add a section with example command and column mapping.
+5) Run a detect-only test command and share the output:
+   - .\.venv\Scripts\python .\Python\supplier_file_to_ariba.py --input "[PATH TO EXAMPLE FILE]" --detect-only
+Please implement the changes directly in the repo.
+```
+
+Once the agent has finished, test a submission. If there are errors, simply tell the coding agent that errors happened, e.g. that items were skipped, or copy the error messages into the coding agent prompt. Once everything works, push the new version of QuickAriba to GitHub, so that everyone can profit from this upgrade.
 
 
 ## Reichelt PDF to Excel
@@ -181,7 +202,7 @@ Once the agent has finished, test a submission. If there are errors, simply copy
 Use this script when you receive a Reichelt offer PDF and want to generate the Excel file for the importer.
 
 ```powershell
-.\.venv\Scripts\python .\reichelt_offer_to_excel.py --pdf ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf" --out ".\ExampleOrdersForAriba\orders_from_reichelt.xlsx"
+.\.venv\Scripts\python .\Python\reichelt_offer_to_excel.py --pdf ".\ExampleOffersFromSupplier\ExampleReicheltOffer.pdf" --out ".\ExampleOrdersForAriba\orders_from_reichelt.xlsx"
 ```
 
 Optional flags:
@@ -208,10 +229,10 @@ Typical workflow:
 
 1. Export cart from Thorlabs as CSV.
 2. Convert CSV to Ariba import Excel with the command below.
-3. Run `ariba_excel_import.py` with the generated `.xlsx` file.
+3. Run `Python/ariba_excel_import.py` with the generated `.xlsx` file.
 
 ```powershell
-.\.venv\Scripts\python .\thorlabs_cart_to_excel.py --csv ".\ExampleOffersFromSupplier\ExampleThorlabsCart.csv" --out ".\ExampleOrdersForAriba\\orders_from_thorlabs.xlsx"
+.\.venv\Scripts\python .\Python\thorlabs_cart_to_excel.py --csv ".\ExampleOffersFromSupplier\ExampleThorlabsCart.csv" --out ".\ExampleOrdersForAriba\\orders_from_thorlabs.xlsx"
 ```
 
 Optional flags:
@@ -230,7 +251,7 @@ Column mapping used:
 Use this script when you export a Farnell shopping cart CSV and want to generate the Excel file for the importer.
 
 ```powershell
-.\.venv\Scripts\python .\farnell_cart_to_excel.py --csv ".\ExampleOffersFromSupplier\ExampleFarnellCart.csv" --out ".\ExampleOrdersForAriba\\orders_from_farnell.xlsx"
+.\.venv\Scripts\python .\Python\farnell_cart_to_excel.py --csv ".\ExampleOffersFromSupplier\ExampleFarnellCart.csv" --out ".\ExampleOrdersForAriba\\orders_from_farnell.xlsx"
 ```
 
 Optional flags:
@@ -249,7 +270,7 @@ Column mapping used:
 Use this script when you export a DigiKey cart workbook and want to generate the Excel file for the importer.
 
 ```powershell
-.\.venv\Scripts\python .\digikey_cart_to_excel.py --xlsx ".\ExampleOffersFromSupplier\ExampleDigikeyCart.xlsx" --out ".\ExampleOrdersForAriba\\orders_from_digikey.xlsx"
+.\.venv\Scripts\python .\Python\digikey_cart_to_excel.py --xlsx ".\ExampleOffersFromSupplier\ExampleDigikeyCart.xlsx" --out ".\ExampleOrdersForAriba\\orders_from_digikey.xlsx"
 ```
 
 Optional flags:
@@ -274,7 +295,7 @@ Ignored DigiKey columns:
 Use this script when you export a Mouser cart as `.xls` and want to generate the Excel file for the importer.
 
 ```powershell
-.\.venv\Scripts\python .\mouser_cart_to_excel.py --xls ".\ExampleOffersFromSupplier\ExampleMouserCart.xls" --out ".\ExampleOrdersForAriba\orders_from_mouser.xlsx"
+.\.venv\Scripts\python .\Python\mouser_cart_to_excel.py --xls ".\ExampleOffersFromSupplier\ExampleMouserCart.xls" --out ".\ExampleOrdersForAriba\orders_from_mouser.xlsx"
 ```
 
 Optional flags:
@@ -317,7 +338,7 @@ At the end, the script stops and you continue checkout manually.
 ```powershell
 .\.venv\Scripts\python -m pip install -r requirements.txt
 .\.venv\Scripts\python -m playwright install chromium
-.\.venv\Scripts\python .\ariba_excel_import.py --excel ".\orders.xlsx"
+.\.venv\Scripts\python .\Python\ariba_excel_import.py --excel ".\orders.xlsx"
 ```
 
 - Or allow activation in the current PowerShell session only:

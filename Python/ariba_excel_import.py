@@ -8,7 +8,7 @@ Expected order Excel layout:
 - Row 3 headers: Product name | Description | Quantity | Unit price
 - Data starts at row 4
 
-Additional required metadata file (same folder as this script by default):
+Additional required metadata file (searched next to this script first, then one folder up):
 - PaymentAndShipping.xlsx
   - A1: Need-by-date, A2: value
   - B1: Deliver to,  B2: value
@@ -64,6 +64,13 @@ def clean_text(value: object) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def default_payment_shipping_path(script_dir: Path) -> Path:
+    local_path = script_dir / PAYMENT_SHIPPING_DEFAULT_FILENAME
+    if local_path.exists():
+        return local_path
+    return script_dir.parent / PAYMENT_SHIPPING_DEFAULT_FILENAME
 
 
 def dbg(message: str) -> None:
@@ -2309,6 +2316,7 @@ def run_import(page: Page, meta: OrderMeta, items: List[ItemRow]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
+    script_dir = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(
         description="Import non-catalog items from Excel into SAP Ariba."
     )
@@ -2334,10 +2342,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--payment-shipping",
-        default=str(Path(__file__).resolve().parent / PAYMENT_SHIPPING_DEFAULT_FILENAME),
+        default=str(default_payment_shipping_path(script_dir)),
         help=(
             "Path to PaymentAndShipping.xlsx "
-            "(default: file with that name next to this script)."
+            "(default: next to this script, else one folder up)."
         ),
     )
     return parser.parse_args()
