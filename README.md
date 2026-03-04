@@ -4,11 +4,13 @@
 
 Use QuickAriba when you want to quickly submit an order to Ariba.
 
+Prerequisites: Windows, Chrome installed, and Python available in `PATH`.
+
 1. One-time setup: create `.venv` and install dependencies (see [Install](#install)).
 2. Double-click `chrome.bat` to start Chrome with remote debugging.
 3. In that Chrome window, log in to Ariba and open `Request a non catalog item +`.
-4. Put payment and shipping metadata in `PaymentAndShipping.xlsx`.
-5. Rename your offer file to `order.*` (e.g. `order.pdf` or `order.xlsx`) and place it in the repository root (same folder as `submit.bat`), then double-click `submit.bat`. 
+4. Put payment and shipping metadata in `PaymentAndShipping.xlsx` in repository root (or `.\Python\`).
+5. Rename your offer file to `order.*` (e.g. `order.pdf` or `order.xlsx`) and place it in the repository root (same folder as `submit.bat`), then double-click `submit.bat`. (Keep only one `order.*` file in the repository root to avoid ambiguity.)
  
 Alternatively to 5., run `submit.bat "<path-to-offer-file>"` from PowerShell, for example:
 
@@ -17,8 +19,14 @@ Alternatively to 5., run `submit.bat "<path-to-offer-file>"` from PowerShell, fo
 ```
 
 `submit.bat` calls `Python/supplier_file_to_ariba.py`, which auto-detects the supplier format, converts if needed, and fills the Ariba non-catalog request.
-Read on to learn which supplier formats are supported. Use Codex or similar to add scripts for more suppliers.
+Supported formats are listed in [Project overview](#project-overview).
 Alternatively: create an excel sheet in the [Excel format](#excel-format) described below and submit that excel sheet directly.
+If it fails, first check:
+- Chrome was started with `chrome.bat`
+- You are logged in and on the non-catalog request page
+- `.venv` dependencies are installed
+- Your supplier format is one of the supported formats
+
 This project was entirely vibecoded with Codex.
 
 ## Project overview
@@ -309,6 +317,17 @@ Column mapping used:
 - Mouser `Besteld aantal` -> Excel `Quantity`
 - Mouser `Prijs (EUR)` -> Excel `Unit price`
 
+
+## Converter regression check
+
+Run this before releases to verify supplier converters still match the known-good example outputs:
+
+```powershell
+.\.venv\Scripts\python .\Python\regression_check_converters.py
+```
+
+Optional:
+- `--keep-temp`: keep generated files in `.\Python\_regression_last_run\` for inspection.
 
 
 ## Automated Ariba flow
