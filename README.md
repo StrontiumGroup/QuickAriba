@@ -189,10 +189,11 @@ Input example file:
 Tasks:
 1) Create a new converter script in the Python folder named [supplier]_cart_to_excel.py (or [supplier]_offer_to_excel.py), following the style of existing *_cart_to_excel.py scripts.
 2) Map columns from the supplier file to Ariba format:
-   - Product name <- [SOURCE COLUMN]
+   - Product name <- [SOURCE COLUMN(S); merge if needed; clipped to 80 characters]
    - Description <- [SOURCE COLUMN(S); merge if needed]
    - Quantity <- [SOURCE COLUMN]
    - Unit price <- [SOURCE COLUMN]
+   [- Supplier Part Number <- [SOURCE COLUMN]]
 3) Update Python/supplier_file_to_ariba.py so it:
    - detects this new supplier format reliably,
    - calls the new converter,
