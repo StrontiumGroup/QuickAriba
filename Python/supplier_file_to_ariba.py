@@ -5,6 +5,7 @@ Detect supplier cart/offer format, convert if needed, then submit to Ariba.
 Supported inputs:
 - Ariba-ready .xlsx (A1/A2 + row 4 headers)
 - Reichelt offer PDF
+- Schäfter + Kirchhoff offer PDF
 - Thorlabs cart CSV
 - Farnell cart CSV
 - DigiKey cart XLSX
@@ -116,7 +117,7 @@ def detect_reichelt_pdf(path: Path) -> bool:
         pass
 
     if not text:
-        tool = shutil.which("pdftotext")
+        tool = find_pdftotext_tool()
         if tool:
             try:
                 result = subprocess.run(
@@ -130,6 +131,52 @@ def detect_reichelt_pdf(path: Path) -> bool:
                 text = ""
 
     return "reichelt" in text and "item no." in text and "description" in text
+
+
+def detect_sk_pdf(path: Path) -> bool:
+    text = ""
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(str(path))
+        for page in reader.pages[:2]:
+            page_text = page.extract_text() or ""
+            text += page_text.lower()
+    except Exception:
+        pass
+
+    if not text:
+        tool = find_pdftotext_tool()
+        if tool:
+            try:
+                result = subprocess.run(
+                    [tool, "-layout", "-enc", "UTF-8", str(path), "-"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                text = (result.stdout or "").lower()
+            except Exception:
+                text = ""
+
+    has_supplier = "kirchhoff" in text
+    has_table = "pos item / description" in text and "pcs." in text and "unit price" in text
+    return has_supplier and has_table
+
+
+def find_pdftotext_tool() -> Optional[str]:
+    found = shutil.which("pdftotext")
+    if found:
+        return found
+
+    candidates = [
+        Path(r"C:\Program Files\MiKTeX\miktex\bin\x64\pdftotext.exe"),
+        Path(r"C:\Program Files (x86)\MiKTeX\miktex\bin\pdftotext.exe"),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return None
 
 
 def detect_mouser_xls(path: Path) -> bool:
@@ -150,6 +197,8 @@ def detect_mouser_xls(path: Path) -> bool:
 def detect_input_kind(path: Path) -> str:
     suffix = path.suffix.lower()
     if suffix == ".pdf":
+        if detect_sk_pdf(path):
+            return "sk_pdf"
         if detect_reichelt_pdf(path):
             return "reichelt_pdf"
         return "unknown_pdf"
@@ -201,6 +250,7 @@ def build_conversion_command(
 ) -> Optional[List[str]]:
     converters: Dict[str, Tuple[str, str]] = {
         "reichelt_pdf": ("reichelt_offer_to_excel.py", "--pdf"),
+        "sk_pdf": ("S+K_offer_to_excel.py", "--pdf"),
         "thorlabs_csv": ("thorlabs_cart_to_excel.py", "--csv"),
         "farnell_csv": ("farnell_cart_to_excel.py", "--csv"),
         "digikey_xlsx": ("digikey_cart_to_excel.py", "--xlsx"),
@@ -302,7 +352,7 @@ def main() -> int:
 
     if kind.startswith("unknown"):
         print("Unsupported or unknown input format.")
-        print("Supported: Ariba .xlsx, Reichelt .pdf, Thorlabs .csv, Farnell .csv, DigiKey .xlsx, Mouser .xls")
+        print("Supported: Ariba .xlsx, Reichelt .pdf, Schäfter + Kirchhoff .pdf, Thorlabs .csv, Farnell .csv, DigiKey .xlsx, Mouser .xls")
         return 2
 
     python_exe = sys.executable

@@ -36,6 +36,7 @@ This project contains the following scripts in the `Python` folder:
 - `supplier_file_to_ariba.py`: auto-detects input format, converts if needed, then runs `ariba_excel_import.py`.
 - `ariba_excel_import.py`: imports non-catalog items from Excel into SAP Ariba Buying.
 - `reichelt_offer_to_excel.py`: converts a Reichelt offer PDF into that Excel format.
+- `S+K_offer_to_excel.py`: converts a Schäfter + Kirchhoff offer PDF into that Excel format.
 - `thorlabs_cart_to_excel.py`: converts a Thorlabs cart CSV into that Excel format.
 - `farnell_cart_to_excel.py`: converts a Farnell cart CSV into that Excel format.
 - `digikey_cart_to_excel.py`: converts a DigiKey cart Excel file into that Excel format.
@@ -139,6 +140,7 @@ It supports:
 
 - Ariba-ready `.xlsx` (no conversion)
 - Reichelt `.pdf`
+- Schäfter + Kirchhoff `.pdf`
 - Thorlabs `.csv`
 - Farnell `.csv`
 - DigiKey `.xlsx`
@@ -233,6 +235,31 @@ Ignored Reichelt columns:
 
 - `Category of goods`
 - `Price on all`
+
+## Schäfter + Kirchhoff PDF to Excel
+
+Use this script when you receive a Schäfter + Kirchhoff offer PDF and want to generate the Excel file for the importer.
+
+```powershell
+.\.venv\Scripts\python ".\Python\S+K_offer_to_excel.py" --pdf ".\ExampleOffersFromSupplier\ExampleS+KOffer.pdf" --out ".\ExampleOrdersForAriba\orders_from_s+k.xlsx"
+```
+
+Optional flags:
+
+- `--supplier` default: `Schäfter + Kirchhoff` (written to cell `A2`)
+
+Column mapping used:
+
+- S+K `<supplier part number> | <description flattened with ", ">` (clipped to max 80 chars) -> Excel `Product name`
+- S+K `description` (up to 3 lines below part number, with line breaks) -> Excel `Description`
+- S+K `pcs.` -> Excel `Quantity`
+- S+K `Unit price` / (1 + VATRate.xlsx[A2]/100) -> Excel `Unit price`
+- S+K `<supplier part number>` -> Excel `Supplier Part Number` (column `E`, optional)
+
+Ignored S+K table parts:
+
+- rebate line below `Unit price` (for example `-3.00%`)
+- `Total EUR`
 
 ## Thorlabs CSV to Excel
 
