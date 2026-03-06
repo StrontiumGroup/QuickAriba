@@ -21,10 +21,11 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Iterable, List
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 
 @dataclass
@@ -44,6 +45,37 @@ def parse_euro_number(text: str) -> str:
     value = re.sub(r"[^0-9,.\-]", "", value)
     value = value.replace(",", ".")
     return value
+
+
+def load_vat_rate_percent(vat_xlsx_path: Path) -> Decimal:
+    try:
+        workbook = load_workbook(vat_xlsx_path, data_only=True)
+    except Exception as exc:
+        raise RuntimeError(f"Unable to read VAT rate file: {vat_xlsx_path}") from exc
+
+    raw_value = workbook.active["A2"].value
+    if raw_value is None:
+        raise RuntimeError(f"VAT rate cell A2 is empty in: {vat_xlsx_path}")
+
+    normalized = str(raw_value).strip().replace("%", "").replace(",", ".")
+    try:
+        vat_rate = Decimal(normalized)
+    except InvalidOperation as exc:
+        raise RuntimeError(
+            f"VAT rate in A2 is not a valid number: {raw_value!r}"
+        ) from exc
+
+    if vat_rate < 0:
+        raise RuntimeError(f"VAT rate in A2 must be >= 0, got: {vat_rate}")
+    return vat_rate
+
+
+def gross_to_net_price(gross_price: str, vat_rate_percent: Decimal) -> str:
+    gross = Decimal(gross_price)
+    divisor = Decimal("1") + (vat_rate_percent / Decimal("100"))
+    net = (gross / divisor).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    net_text = format(net, "f").rstrip("0").rstrip(".")
+    return net_text or "0"
 
 
 def extract_text_with_pypdf(pdf_path: Path) -> str:
@@ -221,6 +253,7 @@ def write_output_excel(output_path: Path, supplier_name: str, items: List[OfferI
 
 
 def parse_args() -> argparse.Namespace:
+    scripts_dir = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(
         description="Convert a Reichelt offer PDF into Ariba import Excel format."
     )
@@ -235,6 +268,11 @@ def parse_args() -> argparse.Namespace:
         default="Reichelt",
         help="Supplier name written to cell B1 (default: Reichelt).",
     )
+    parser.add_argument(
+        "--vat-xlsx",
+        default=str(scripts_dir / "VATRate.xlsx"),
+        help="Path to VATRate.xlsx (reads VAT rate from cell A2).",
+    )
     return parser.parse_args()
 
 
@@ -242,6 +280,7 @@ def main() -> int:
     args = parse_args()
     pdf_path = Path(args.pdf).expanduser().resolve()
     out_path = Path(args.out).expanduser().resolve()
+    vat_xlsx_path = Path(args.vat_xlsx).expanduser().resolve()
 
     if not pdf_path.exists():
         print(f"Input PDF not found: {pdf_path}")
@@ -261,6 +300,10 @@ def main() -> int:
     if not items:
         print("No offer rows found in PDF table.")
         return 1
+
+    vat_rate_percent = load_vat_rate_percent(vat_xlsx_path)
+    for item in items:
+        item.unit_price = gross_to_net_price(item.unit_price, vat_rate_percent)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     write_output_excel(out_path, args.supplier, items)

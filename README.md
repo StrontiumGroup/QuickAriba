@@ -52,7 +52,7 @@ Use this layout in the first worksheet:
   - `Product name`
   - `Description`
   - `Quantity`
-  - `Unit price`
+  - `Unit price` (without VAT)
 - Data starts on the row directly below the headers
 
 The script stops when it reaches the first completely empty data row.
