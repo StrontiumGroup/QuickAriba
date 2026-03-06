@@ -3,7 +3,7 @@
 Detect supplier cart/offer format, convert if needed, then submit to Ariba.
 
 Supported inputs:
-- Ariba-ready .xlsx (A1/B1 + row 3 headers)
+- Ariba-ready .xlsx (A1/A2 + row 4 headers)
 - Reichelt offer PDF
 - Thorlabs cart CSV
 - Farnell cart CSV
@@ -27,6 +27,7 @@ from openpyxl import load_workbook
 
 
 ARIBA_HEADERS = ["Product name", "Description", "Quantity", "Unit price"]
+OPTIONAL_ARIBA_HEADER = "Supplier Part Number"
 
 
 def clean_text(value: object) -> str:
@@ -46,19 +47,23 @@ def detect_ariba_xlsx(path: Path) -> bool:
     if a1 != "supplier name":
         return False
 
-    # New layout: metadata in rows 1-2, headers row 4, data row 5.
-    new_headers = [clean_text(ws.cell(row=4, column=c).value) for c in range(1, 5)]
-    if new_headers == ARIBA_HEADERS:
-        first_data = [clean_text(ws.cell(row=5, column=c).value) for c in range(1, 5)]
-        return any(first_data)
+    supplier_name = clean_text(ws["A2"].value)
+    if not supplier_name:
+        return False
 
-    # Legacy layout: headers row 3, data row 4.
-    old_headers = [clean_text(ws.cell(row=3, column=c).value) for c in range(1, 5)]
-    if old_headers == ARIBA_HEADERS:
-        first_data = [clean_text(ws.cell(row=4, column=c).value) for c in range(1, 5)]
-        return any(first_data)
+    if any(clean_text(ws.cell(row=3, column=c).value) for c in range(1, 6)):
+        return False
 
-    return False
+    headers = [clean_text(ws.cell(row=4, column=c).value) for c in range(1, 5)]
+    if headers != ARIBA_HEADERS:
+        return False
+
+    optional_header = clean_text(ws.cell(row=4, column=5).value)
+    if optional_header and optional_header != OPTIONAL_ARIBA_HEADER:
+        return False
+
+    first_data = [clean_text(ws.cell(row=5, column=c).value) for c in range(1, 6)]
+    return any(first_data)
 
 
 def detect_digikey_xlsx(path: Path) -> bool:

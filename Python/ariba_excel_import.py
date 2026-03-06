@@ -4,9 +4,11 @@ Import non-catalog line items from Excel into SAP Ariba Buying.
 
 Expected order Excel layout:
 - A1: Supplier name
-- B1: Supplier value (for example "Reichelt" or "Thorlabs")
-- Headers on row 3 (legacy) or row 4 (new):
+- A2: Supplier value (for example "Reichelt" or "Thorlabs")
+- Row 3: empty
+- Headers on row 4:
   Product name | Description | Quantity | Unit price
+- Optional header on E4: Supplier Part Number
 - Data starts on the row directly below the headers
 
 Additional required metadata file (searched next to this script first, then one folder up):
@@ -36,9 +38,9 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Locator, Page, TimeoutError, sync_playwright
 
 
-LEGACY_HEADER_ROW = 3
 NEW_HEADER_ROW = 4
 REQUIRED_HEADERS = ["Product name", "Description", "Quantity", "Unit price"]
+OPTIONAL_HEADER_SUPPLIER_PART_NUMBER = "Supplier Part Number"
 ITEM_SHIPTO_TARGET_PREFIX = "0006 (UvA"
 DEBUG = False
 PAYMENT_SHIPPING_DEFAULT_FILENAME = "PaymentAndShipping.xlsx"
@@ -59,6 +61,7 @@ class ItemRow:
     description: str
     quantity: str
     unit_price: str
+    supplier_part_number: Optional[str] = None
 
 
 def clean_text(value: object) -> str:
@@ -115,14 +118,22 @@ def normalize_number_text(value: object, field_name: str, row_number: int) -> st
 
 
 def detect_order_header_row(ws) -> int:
-    for header_row in (NEW_HEADER_ROW, LEGACY_HEADER_ROW):
-        headers = [clean_text(ws.cell(row=header_row, column=i).value) for i in range(1, 5)]
-        if headers == REQUIRED_HEADERS:
-            return header_row
-    raise ValueError(
-        "Could not find required headers. Expected row 3 or row 4 with: "
-        + ", ".join(REQUIRED_HEADERS)
-    )
+    if any(clean_text(ws.cell(row=3, column=i).value) for i in range(1, 6)):
+        raise ValueError("Row 3 must be empty in the current Excel format.")
+
+    headers = [clean_text(ws.cell(row=NEW_HEADER_ROW, column=i).value) for i in range(1, 5)]
+    if headers != REQUIRED_HEADERS:
+        raise ValueError(
+            "Could not find required headers on row 4. Expected: "
+            + ", ".join(REQUIRED_HEADERS)
+        )
+
+    optional_header = clean_text(ws.cell(row=NEW_HEADER_ROW, column=5).value)
+    if optional_header and optional_header != OPTIONAL_HEADER_SUPPLIER_PART_NUMBER:
+        raise ValueError(
+            "Cell E4 may only be empty or 'Supplier Part Number'."
+        )
+    return NEW_HEADER_ROW
 
 
 def load_items_from_excel(excel_path: Path) -> tuple[OrderMeta, List[ItemRow]]:
@@ -136,11 +147,10 @@ def load_items_from_excel(excel_path: Path) -> tuple[OrderMeta, List[ItemRow]]:
     header_row = detect_order_header_row(ws)
     data_start_row = header_row + 1
 
-    # Order file uses the original layout only.
     a1 = clean_text(ws["A1"].value).lower()
     if a1 != "supplier name":
         raise ValueError("Cell A1 must contain 'Supplier name'.")
-    supplier_name = clean_text(ws["B1"].value)
+    supplier_name = clean_text(ws["A2"].value)
 
     if not supplier_name:
         raise ValueError("Supplier value is empty.")
@@ -148,7 +158,7 @@ def load_items_from_excel(excel_path: Path) -> tuple[OrderMeta, List[ItemRow]]:
     items: List[ItemRow] = []
     current_row = data_start_row
     while True:
-        values = [ws.cell(row=current_row, column=i).value for i in range(1, 5)]
+        values = [ws.cell(row=current_row, column=i).value for i in range(1, 6)]
         if all(clean_text(v) == "" for v in values):
             break
 
@@ -169,6 +179,7 @@ def load_items_from_excel(excel_path: Path) -> tuple[OrderMeta, List[ItemRow]]:
                 description=description,
                 quantity=quantity,
                 unit_price=unit_price,
+                supplier_part_number=clean_text(values[4]) or None,
             )
         )
         current_row += 1
@@ -988,7 +999,9 @@ def click_visible_item_expanders(page: Page, min_y: float) -> int:
     return clicked
 
 
-def fill_item_fields_on_requisition(page: Page, meta: OrderMeta, expected_items: int) -> None:
+def fill_item_fields_on_requisition(
+    page: Page, meta: OrderMeta, items: List[ItemRow], expected_items: int
+) -> None:
     items_y = get_items_section_min_y(page)
     # Start from top of items so first rows are not missed.
     try:
@@ -1001,6 +1014,13 @@ def fill_item_fields_on_requisition(page: Page, meta: OrderMeta, expected_items:
     zero_banner_rounds = 0
     filled_shipto = 0
     filled_wbs = 0
+    supplier_part_targets = {
+        idx: item.supplier_part_number
+        for idx, item in enumerate(items, start=1)
+        if item.supplier_part_number
+    }
+    supplier_part_done: set[int] = set()
+    filled_supplier_part = 0
     if not meta.wbs:
         dbg("WBS is empty; skipping Accounting/WBS automation.")
     max_rounds = max(55, expected_items * 10)
@@ -1011,6 +1031,7 @@ def fill_item_fields_on_requisition(page: Page, meta: OrderMeta, expected_items:
         expanded = 0
         extra_shipto = 0
         extra_wbs = 0
+        extra_supplier_part = 0
         scroll_delta = 0
         dbg(
             f"Requisition item round start: no-progress={attempts_without_progress}, "
@@ -1020,15 +1041,18 @@ def fill_item_fields_on_requisition(page: Page, meta: OrderMeta, expected_items:
         remaining_before = count_visible_item_error_banners(page, min_y=items_y)
         dbg(f"Visible item error banners: {remaining_before}")
 
-        progress_shipto, progress_wbs = process_visible_items_with_errors(
+        progress_shipto, progress_wbs, progress_supplier_part = process_visible_items_with_errors(
             page,
             meta,
             min_y=items_y,
             include_all_visible_items=False,
+            supplier_part_targets=supplier_part_targets,
+            supplier_part_done=supplier_part_done,
         )
         filled_shipto += progress_shipto
         filled_wbs += progress_wbs
-        progress += progress_shipto + progress_wbs
+        filled_supplier_part += progress_supplier_part
+        progress += progress_shipto + progress_wbs + progress_supplier_part
 
         # Only try to expand more rows when no visible warning row was fixed in this round.
         if progress == 0:
@@ -1039,19 +1063,22 @@ def fill_item_fields_on_requisition(page: Page, meta: OrderMeta, expected_items:
 
         # Fallback sweep: only after repeated no-progress rounds, widen scope beyond warning rows.
         if progress == 0 and attempts_without_progress >= 3:
-            extra_shipto, extra_wbs = process_visible_items_with_errors(
+            extra_shipto, extra_wbs, extra_supplier_part = process_visible_items_with_errors(
                 page,
                 meta,
                 min_y=items_y,
                 include_all_visible_items=True,
+                supplier_part_targets=supplier_part_targets,
+                supplier_part_done=supplier_part_done,
             )
             filled_shipto += extra_shipto
             filled_wbs += extra_wbs
-            progress += extra_shipto + extra_wbs
-            if extra_shipto or extra_wbs:
+            filled_supplier_part += extra_supplier_part
+            progress += extra_shipto + extra_wbs + extra_supplier_part
+            if extra_shipto or extra_wbs or extra_supplier_part:
                 dbg(
                     "Fallback broad pass changed "
-                    f"ShipTo={extra_shipto}, WBS={extra_wbs}."
+                    f"SupplierPart={extra_supplier_part}, ShipTo={extra_shipto}, WBS={extra_wbs}."
                 )
 
         # Prioritize current viewport first: warning rows can appear after expanding/filling.
@@ -1084,8 +1111,8 @@ def fill_item_fields_on_requisition(page: Page, meta: OrderMeta, expected_items:
                 "[DEBUG] round "
                 f"{round_idx + 1}/{max_rounds}: "
                 f"before={remaining_before}, after={remaining_after}, "
-                f"shipto+={progress_shipto}, wbs+={progress_wbs}, "
-                f"expanded={expanded}, fallback_shipto+={extra_shipto}, fallback_wbs+={extra_wbs}, "
+                f"supplierpart+={progress_supplier_part}, shipto+={progress_shipto}, wbs+={progress_wbs}, "
+                f"expanded={expanded}, fallback_supplierpart+={extra_supplier_part}, fallback_shipto+={extra_shipto}, fallback_wbs+={extra_wbs}, "
                 f"scroll={scroll_delta}, progress={progress}, "
                 f"no_progress_streak={attempts_without_progress}, "
                 f"elapsed={round_elapsed:.1f}s"
@@ -1114,7 +1141,8 @@ def fill_item_fields_on_requisition(page: Page, meta: OrderMeta, expected_items:
 
     print(
         "Filled item-level fields on requisition: "
-        f"Need-by Date=header-only, Deliver To=header-only, ShipTo(Plant)={filled_shipto}, WBS={filled_wbs}"
+        f"Need-by Date=header-only, Deliver To=header-only, "
+        f"Supplier Part Number={filled_supplier_part}, ShipTo(Plant)={filled_shipto}, WBS={filled_wbs}"
     )
     remaining = count_visible_item_error_banners(page, min_y=items_y)
     dbg(
@@ -1126,6 +1154,13 @@ def fill_item_fields_on_requisition(page: Page, meta: OrderMeta, expected_items:
         print(
             f"Warning: could not set item WBS for all items (set {filled_wbs}/{expected_items}). "
             "Please complete remaining item(s) manually."
+        )
+    missing_supplier_part = sorted(set(supplier_part_targets.keys()) - supplier_part_done)
+    if missing_supplier_part:
+        print(
+            "Warning: could not set Supplier Part Number for item(s): "
+            + ", ".join(str(i) for i in missing_supplier_part)
+            + ". Please verify manually."
         )
     if remaining > 0:
         print(
@@ -1160,9 +1195,16 @@ def process_visible_items_with_errors(
     meta: OrderMeta,
     min_y: float,
     include_all_visible_items: bool = False,
-) -> tuple[int, int]:
+    supplier_part_targets: Optional[dict[int, Optional[str]]] = None,
+    supplier_part_done: Optional[set[int]] = None,
+) -> tuple[int, int, int]:
+    if supplier_part_targets is None:
+        supplier_part_targets = {}
+    if supplier_part_done is None:
+        supplier_part_done = set()
     shipto_changed = 0
     wbs_changed = 0
+    supplier_part_changed = 0
     # Prefer explicit visible item roots. Banner ancestor chains can be unstable in some Ariba layouts.
     item_containers: List[tuple[float, Locator]] = []
     seen_item_y: List[float] = []
@@ -1286,12 +1328,25 @@ def process_visible_items_with_errors(
             dbg(f"Could not confirm item details opened for item near y={item_y:.0f}; continuing scan.")
             continue
 
+        item_index = parse_item_index_from_label(item_label)
+        if item_index is not None and item_index in supplier_part_targets and item_index not in supplier_part_done:
+            target_supplier_part = supplier_part_targets[item_index] or ""
+            if set_item_supplier_part_number_in_scope(page, item, target_supplier_part):
+                supplier_part_done.add(item_index)
+                supplier_part_changed += 1
+                dbg(
+                    f"Set Supplier Part Number for {item_label} "
+                    f"to '{target_supplier_part}'."
+                )
+            else:
+                dbg(f"Could not set Supplier Part Number for {item_label} in this pass.")
+
         if set_item_shipto_in_scope(page, item):
             shipto_changed += 1
         if meta.wbs and set_item_wbs_in_scope(page, item, meta.wbs):
             wbs_changed += 1
 
-    return shipto_changed, wbs_changed
+    return shipto_changed, wbs_changed, supplier_part_changed
 
 
 def ensure_item_details_open(item: Locator, page: Page, item_y_hint: Optional[float] = None) -> bool:
@@ -1464,6 +1519,79 @@ def nearest_visible_item_by_y(page: Page, target_y: float, min_y: float = -1.0) 
     return best
 
 
+def parse_item_index_from_label(label: str) -> Optional[int]:
+    match = re.search(r"\bItem\s+(\d+)\b", label, re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        value = int(match.group(1))
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def find_supplier_part_input_for_item(page: Page, item: Locator) -> Optional[Locator]:
+    scoped_candidates = [
+        item.locator("input[name='Description.SupplierPartNumber']:visible"),
+        item.locator("input[data-help-id*='Description.SupplierPartNumber']:visible"),
+        item.locator(
+            "xpath=.//*[contains(normalize-space(.), 'Supplier Part Number')]/following::input[1]"
+        ),
+    ]
+    for locator in scoped_candidates:
+        candidate = first_visible_or_none([locator])
+        if candidate is not None:
+            return candidate
+
+    # Fallback: nearest visible supplier-part input by y-distance to current item.
+    try:
+        item_box = item.bounding_box()
+    except PlaywrightError:
+        item_box = None
+    if item_box is None:
+        return None
+
+    all_candidates = page.locator("input[name='Description.SupplierPartNumber']:visible")
+    try:
+        count = all_candidates.count()
+    except PlaywrightError:
+        return None
+
+    nearest: Optional[Locator] = None
+    nearest_dist = 10_000.0
+    for i in range(count):
+        candidate = all_candidates.nth(i)
+        try:
+            if not candidate.is_visible():
+                continue
+            box = candidate.bounding_box()
+            if box is None:
+                continue
+            dist = abs(box["y"] - item_box["y"])
+            if dist < nearest_dist:
+                nearest_dist = dist
+                nearest = candidate
+        except PlaywrightError:
+            continue
+
+    if nearest is not None and nearest_dist <= 260:
+        return nearest
+    return None
+
+
+def set_item_supplier_part_number_in_scope(page: Page, item: Locator, value: str) -> bool:
+    input_box = find_supplier_part_input_for_item(page, item)
+    if input_box is None:
+        return False
+    changed = fill_input_if_needed(input_box, value, page)
+    if changed:
+        return True
+    try:
+        return clean_text(input_box.input_value()) == clean_text(value)
+    except PlaywrightError:
+        return False
+
+
 def set_item_shipto_in_scope(page: Page, item: Locator) -> bool:
     dbg("Attempting ShipTo set in current item scope.")
     control = item.locator("button[role='combobox'][data-help-id*='-ShipTo']").first
@@ -1477,28 +1605,86 @@ def set_item_shipto_in_scope(page: Page, item: Locator) -> bool:
     if ITEM_SHIPTO_TARGET_PREFIX.lower() in current.lower():
         return False
 
-    try:
-        control.click(timeout=1200)
-        page.wait_for_timeout(1400)
-    except PlaywrightError:
-        dbg("ShipTo control click failed.")
-        return False
+    for attempt in range(1, 4):
+        try:
+            control.scroll_into_view_if_needed(timeout=900)
+        except PlaywrightError:
+            pass
 
-    option = page.locator(
-        "a.user-choice[data-help-id*='-ShipTo-']:visible",
-        has_text=re.compile(r"0006\s*\(UvA", re.IGNORECASE),
-    ).first
-    try:
-        option.wait_for(timeout=3500)
-        page.wait_for_timeout(800)
-        option.click(timeout=1800)
-        page.wait_for_timeout(1400)
-    except PlaywrightError:
-        dbg("ShipTo option selection failed.")
-        return False
+        opened = False
+        try:
+            control.click(timeout=1400)
+            page.wait_for_timeout(1600)
+            if page.locator("a.user-choice[data-help-id*='-ShipTo-']:visible").count() > 0:
+                opened = True
+        except PlaywrightError:
+            pass
 
-    now = clean_text(control.text_content())
-    return ITEM_SHIPTO_TARGET_PREFIX.lower() in now.lower()
+        if not opened:
+            try:
+                control.evaluate("el => el.click()")
+                page.wait_for_timeout(1700)
+                if page.locator("a.user-choice[data-help-id*='-ShipTo-']:visible").count() > 0:
+                    opened = True
+            except Exception:
+                pass
+
+        if not opened:
+            dbg(f"ShipTo dropdown did not open on attempt {attempt}.")
+            try:
+                page.keyboard.press("Escape")
+            except PlaywrightError:
+                pass
+            continue
+
+        chooser = control.locator("xpath=ancestor::*[contains(@class,'field-chooser')][1]").first
+        option_candidates = [
+            chooser.locator(
+                "xpath=.//a[contains(@class,'user-choice') and contains(@data-help-id,'-ShipTo-') and contains(normalize-space(.),'0006')]"
+            ).first,
+            chooser.locator(
+                "xpath=.//a[contains(@class,'user-choice') and contains(@data-help-id,'-ShipTo-') and contains(normalize-space(.),'UvA')]"
+            ).first,
+            page.locator("a.user-choice[data-help-id*='-ShipTo-0']:visible").first,
+            page.locator("a.user-choice[data-help-id*='-ShipTo-']:has-text('0006'):visible").first,
+            page.locator("a.user-choice[data-help-id*='-ShipTo-']:has-text('UvA'):visible").first,
+        ]
+
+        clicked = False
+        for option in option_candidates:
+            if option.count() == 0:
+                continue
+            try:
+                option.wait_for(timeout=4200)
+                page.wait_for_timeout(900)
+                option.click(timeout=2200)
+                page.wait_for_timeout(1700)
+                clicked = True
+                break
+            except PlaywrightError:
+                continue
+
+        if not clicked:
+            dbg(f"ShipTo option selection failed on attempt {attempt}.")
+            try:
+                page.keyboard.press("Escape")
+            except PlaywrightError:
+                pass
+            continue
+
+        deadline = time.monotonic() + 4.0
+        while time.monotonic() < deadline:
+            now = clean_text(control.text_content())
+            row_now = safe_text(item)
+            if (
+                ITEM_SHIPTO_TARGET_PREFIX.lower() in now.lower()
+                or ITEM_SHIPTO_TARGET_PREFIX.lower() in row_now.lower()
+            ):
+                return True
+            page.wait_for_timeout(160)
+
+        dbg(f"ShipTo change not yet confirmed after attempt {attempt}; retrying.")
+    return False
 
 
 def set_item_wbs_in_scope(page: Page, item: Locator, wbs: str) -> bool:
@@ -2282,10 +2468,12 @@ def get_items_section_min_y(page: Page) -> float:
     return -1.0
 
 
-def checkout_and_fill_requisition(page: Page, meta: OrderMeta, expected_items: int) -> None:
+def checkout_and_fill_requisition(
+    page: Page, meta: OrderMeta, items: List[ItemRow], expected_items: int
+) -> None:
     click_checkout(page)
     fill_requisition_header_fields(page, meta)
-    fill_item_fields_on_requisition(page, meta, expected_items)
+    fill_item_fields_on_requisition(page, meta, items, expected_items)
 
 
 def fill_one_item(page: Page, item: ItemRow) -> None:
@@ -2318,7 +2506,7 @@ def run_import(page: Page, meta: OrderMeta, items: List[ItemRow]) -> None:
         if index < total:
             create_new_item(page)
     print("Opening checkout and filling requisition fields...")
-    checkout_and_fill_requisition(page, meta, total)
+    checkout_and_fill_requisition(page, meta, items, total)
 
 
 def parse_args() -> argparse.Namespace:
@@ -2329,7 +2517,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--excel",
         required=True,
-        help="Path to .xlsx file with Supplier name in A1/B1 and headers on row 3 or 4.",
+        help="Path to .xlsx file with Supplier name in A1/A2 and headers on row 4.",
     )
     parser.add_argument(
         "--cdp-url",

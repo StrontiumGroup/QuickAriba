@@ -3,10 +3,11 @@
 Convert a DigiKey cart Excel file into the format expected by ariba_excel_import.py.
 
 Mapping:
-- DigiKey "Part Number" -> Excel "Product name"
+- DigiKey "Part Number | Description" (max 80 chars) -> Excel "Product name"
 - DigiKey "Description" -> Excel "Description"
 - DigiKey "Quantity"    -> Excel "Quantity"
 - DigiKey "Unit Price"  -> Excel "Unit price"
+- DigiKey "Part Number" -> Excel "Supplier Part Number"
 
 Ignored columns:
 - "Manufacturer Part Number"
@@ -47,6 +48,11 @@ def normalize_decimal_text(value: object, field_name: str) -> str:
     if number <= 0:
         raise ValueError(f"{field_name} must be > 0 (got '{value}').")
     return format(number.normalize(), "f")
+
+
+def build_product_name(part_number: str, description: str, max_len: int = 80) -> str:
+    combined = f"{part_number} | {description}"
+    return combined[:max_len]
 
 
 def load_digikey_rows(path: Path) -> List[Dict[str, str]]:
@@ -97,10 +103,11 @@ def load_digikey_rows(path: Path) -> List[Dict[str, str]]:
 
         rows.append(
             {
-                "product_name": part_number,
+                "product_name": build_product_name(part_number, description),
                 "description": description,
                 "quantity": quantity,
                 "unit_price": unit_price,
+                "supplier_part_number": part_number,
             }
         )
         row_idx += 1
@@ -116,18 +123,20 @@ def write_output_excel(output_path: Path, supplier_name: str, items: List[Dict[s
     ws.title = "Order"
 
     ws["A1"] = "Supplier name"
-    ws["B1"] = supplier_name
-    ws["A3"] = "Product name"
-    ws["B3"] = "Description"
-    ws["C3"] = "Quantity"
-    ws["D3"] = "Unit price"
+    ws["A2"] = supplier_name
+    ws["A4"] = "Product name"
+    ws["B4"] = "Description"
+    ws["C4"] = "Quantity"
+    ws["D4"] = "Unit price"
+    ws["E4"] = "Supplier Part Number"
 
-    r = 4
+    r = 5
     for item in items:
         ws.cell(row=r, column=1, value=item["product_name"])
         ws.cell(row=r, column=2, value=item["description"])
         ws.cell(row=r, column=3, value=item["quantity"])
         ws.cell(row=r, column=4, value=item["unit_price"])
+        ws.cell(row=r, column=5, value=item["supplier_part_number"])
         r += 1
 
     wb.save(output_path)
@@ -142,7 +151,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--supplier",
         default="DigiKey",
-        help="Supplier name written to cell B1 (default: DigiKey).",
+        help="Supplier name written to cell A2 (default: DigiKey).",
     )
     return parser.parse_args()
 

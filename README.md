@@ -47,13 +47,16 @@ This project contains the following scripts in the `Python` folder:
 Use this layout in the first worksheet:
 
 - `A1`: `Supplier name`
-- `B1`: supplier value (example: `Reichelt`, `Thorlabs`)
-- Headers on row `3` (legacy) or row `4` (new):
+- `A2`: supplier value (example: `Reichelt`, `Thorlabs`)
+- Row `3`: empty
+- Headers on row `4`:
   - `Product name`
   - `Description`
   - `Quantity`
   - `Unit price` (without VAT)
+- Optional header on `E4`: `Supplier Part Number`
 - Data starts on the row directly below the headers
+- If `Supplier Part Number` is present and has values, the importer fills that field per item on the requisition/items page.
 
 The script stops when it reaches the first completely empty data row.
 
@@ -215,14 +218,15 @@ Use this script when you receive a Reichelt offer PDF and want to generate the E
 
 Optional flags:
 
-- `--supplier` default: `Reichelt` (written to cell `B1`)
+- `--supplier` default: `Reichelt` (written to cell `A2`)
 
 Column mapping used:
 
-- Reichelt `Item No.` -> Excel `Product name`
+- Reichelt `Item No. | Description` (clipped to max 80 chars) -> Excel `Product name`
 - Reichelt `Description` -> Excel `Description`
 - Reichelt `Quantity` -> Excel `Quantity`
 - Reichelt `Price` -> Excel `Unit price`
+- Reichelt `Item No.` -> Excel `Supplier Part Number` (column `E`, optional)
 
 Ignored Reichelt columns:
 
@@ -245,14 +249,15 @@ Typical workflow:
 
 Optional flags:
 
-- `--supplier` default: `Thorlabs` (written to cell `B1`)
+- `--supplier` default: `Thorlabs` (written to cell `A2`)
 
 Column mapping used:
 
-- Thorlabs `Item Number` -> Excel `Product name`
+- Thorlabs `Item Number | Description` (clipped to max 80 chars) -> Excel `Product name`
 - Excel `Description` -> `<Thorlabs Description>` on first line, then ` URL: <Thorlabs URL>` on second line
 - Thorlabs `Quantity` -> Excel `Quantity`
 - Thorlabs `Unit Price` -> Excel `Unit price`
+- Thorlabs `Item Number` -> Excel `Supplier Part Number` (column `E`, optional)
 
 ## Farnell CSV to Excel
 
@@ -264,14 +269,15 @@ Use this script when you export a Farnell shopping cart CSV and want to generate
 
 Optional flags:
 
-- `--supplier` default: `Farnell` (written to cell `B1`)
+- `--supplier` default: `Farnell` (written to cell `A2`)
 
 Column mapping used:
 
-- Farnell `Ordercode` -> Excel `Product name`
+- Farnell `Ordercode | Fabrikant / beschrijving` (clipped to max 80 chars) -> Excel `Product name`
 - Farnell `Fabrikant / beschrijving` -> Excel `Description`
 - Farnell `Hoeveelheid` -> Excel `Quantity`
 - Farnell `Prijs per stuk` -> Excel `Unit price`
+- Farnell `Ordercode` -> Excel `Supplier Part Number` (column `E`, optional)
 
 ## DigiKey XLSX to Excel
 
@@ -283,14 +289,15 @@ Use this script when you export a DigiKey cart workbook and want to generate the
 
 Optional flags:
 
-- `--supplier` default: `DigiKey` (written to cell `B1`)
+- `--supplier` default: `DigiKey` (written to cell `A2`)
 
 Column mapping used:
 
-- DigiKey `Part Number` -> Excel `Product name`
+- DigiKey `Part Number | Description` (clipped to max 80 chars) -> Excel `Product name`
 - DigiKey `Description` -> Excel `Description`
 - DigiKey `Quantity` -> Excel `Quantity`
 - DigiKey `Unit Price` -> Excel `Unit price`
+- DigiKey `Part Number` -> Excel `Supplier Part Number` (column `E`, optional)
 
 Ignored DigiKey columns:
 
@@ -308,14 +315,15 @@ Use this script when you export a Mouser cart as `.xls` and want to generate the
 
 Optional flags:
 
-- `--supplier` default: `Mouser` (written to cell `B1`)
+- `--supplier` default: `Mouser` (written to cell `A2`)
 
 Column mapping used:
 
-- Mouser `Mouser-nr` -> Excel `Product name`
+- Mouser `Mouser-nr | Omschrijving` (clipped to max 80 chars) -> Excel `Product name`
 - Mouser `Omschrijving` -> Excel `Description`
 - Mouser `Besteld aantal` -> Excel `Quantity`
 - Mouser `Prijs (EUR)` -> Excel `Unit price`
+- Mouser `Mouser-nr` -> Excel `Supplier Part Number` (column `E`, optional)
 
 
 ## Converter regression check
@@ -334,11 +342,12 @@ Optional:
 
 For each row:
 
-1. Ensure supplier is selected (from `B1`) via `View all suppliers`.
+1. Ensure supplier is selected (from `A2`) via `View all suppliers`.
 2. Set category to `900006 (Laboratory - Items and disposables)`.
 3. Fill `Product name`, `Description`, `Quantity`, `Unit price`.
-4. Click `Add to cart`.
-5. If more rows remain: open three-dot menu and click `Create new`.
+4. Fill `Supplier Part Number` when present in Excel column `E`.
+5. Click `Add to cart`.
+6. If more rows remain: open three-dot menu and click `Create new`.
 
 At the end, the script stops and you continue checkout manually.
 
@@ -374,12 +383,13 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 `Excel validation error: Could not find required headers ...`
 
-- Confirm row 3 or row 4 is exactly: `Product name`, `Description`, `Quantity`, `Unit price`.
+- Confirm row 4 is exactly: `Product name`, `Description`, `Quantity`, `Unit price`.
+- If E4 is used, it must be `Supplier Part Number`.
 - Confirm data starts directly below the header row.
 
 `Supplier search found no match for '<name>'`
 
-- Check the value in `B1` and try a more specific supplier name.
+- Check the value in `A2` and try a more specific supplier name.
 - Open `View all suppliers` manually and verify the supplier is searchable in your tenant.
 
 `No offer rows found in PDF table`

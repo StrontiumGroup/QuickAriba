@@ -3,10 +3,11 @@
 Convert a Reichelt offer PDF into the Excel format expected by ariba_excel_import.py.
 
 Mapping:
-- Reichelt "Item No."    -> Excel "Product name"
+- Reichelt "Item No. | Description" (max 80 chars) -> Excel "Product name"
 - Reichelt "Description" -> Excel "Description"
 - Quantity               -> Quantity
 - Price                  -> Unit price
+- Reichelt "Item No."    -> Excel "Supplier Part Number"
 
 Ignored columns:
 - Category of goods
@@ -45,6 +46,11 @@ def parse_euro_number(text: str) -> str:
     value = re.sub(r"[^0-9,.\-]", "", value)
     value = value.replace(",", ".")
     return value
+
+
+def build_product_name(item_no: str, description: str, max_len: int = 80) -> str:
+    combined = f"{item_no} | {description}"
+    return combined[:max_len]
 
 
 def load_vat_rate_percent(vat_xlsx_path: Path) -> Decimal:
@@ -231,22 +237,25 @@ def write_output_excel(output_path: Path, supplier_name: str, items: List[OfferI
     ws.title = "Order"
 
     ws["A1"] = "Supplier name"
-    ws["B1"] = supplier_name
+    ws["A2"] = supplier_name
 
-    ws["A3"] = "Product name"
-    ws["B3"] = "Description"
-    ws["C3"] = "Quantity"
-    ws["D3"] = "Unit price"
+    ws["A4"] = "Product name"
+    ws["B4"] = "Description"
+    ws["C4"] = "Quantity"
+    ws["D4"] = "Unit price"
+    ws["E4"] = "Supplier Part Number"
 
-    row = 4
+    row = 5
     for item in items:
         # Mapping:
-        # Reichelt Item No.    -> Product name
+        # Reichelt Item No. + Description -> Product name (clipped to 80 chars)
         # Reichelt Description -> Description
-        ws.cell(row=row, column=1, value=item.item_no)
+        # Reichelt Item No.    -> Supplier Part Number
+        ws.cell(row=row, column=1, value=build_product_name(item.item_no, item.description))
         ws.cell(row=row, column=2, value=item.description)
         ws.cell(row=row, column=3, value=item.quantity)
         ws.cell(row=row, column=4, value=item.unit_price)
+        ws.cell(row=row, column=5, value=item.item_no)
         row += 1
 
     wb.save(output_path)
@@ -266,7 +275,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--supplier",
         default="Reichelt",
-        help="Supplier name written to cell B1 (default: Reichelt).",
+        help="Supplier name written to cell A2 (default: Reichelt).",
     )
     parser.add_argument(
         "--vat-xlsx",

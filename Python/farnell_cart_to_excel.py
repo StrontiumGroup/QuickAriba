@@ -3,10 +3,11 @@
 Convert a Farnell shopping-cart CSV into the Excel format expected by ariba_excel_import.py.
 
 Mapping:
-- Farnell "Ordercode"                 -> Excel "Product name"
+- Farnell "Ordercode | Fabrikant / beschrijving" (max 80 chars) -> Excel "Product name"
 - Farnell "Fabrikant / beschrijving"  -> Excel "Description"
 - Farnell "Hoeveelheid"               -> Excel "Quantity"
 - Farnell "Prijs per stuk"            -> Excel "Unit price"
+- Farnell "Ordercode"                 -> Excel "Supplier Part Number"
 """
 
 from __future__ import annotations
@@ -49,6 +50,11 @@ def normalize_decimal_text(text: str, field_name: str) -> str:
     return format(decimal.normalize(), "f")
 
 
+def build_product_name(ordercode: str, description: str, max_len: int = 80) -> str:
+    combined = f"{ordercode} | {description}"
+    return combined[:max_len]
+
+
 def parse_farnell_csv(csv_path: Path) -> List[Dict[str, str]]:
     rows: List[Dict[str, str]] = []
     with csv_path.open("r", encoding="utf-8-sig", newline="") as fh:
@@ -82,10 +88,11 @@ def parse_farnell_csv(csv_path: Path) -> List[Dict[str, str]]:
 
             rows.append(
                 {
-                    "product_name": ordercode,
+                    "product_name": build_product_name(ordercode, description),
                     "description": description,
                     "quantity": quantity,
                     "unit_price": unit_price,
+                    "supplier_part_number": ordercode,
                 }
             )
 
@@ -102,18 +109,20 @@ def write_output_excel(
     ws.title = "Order"
 
     ws["A1"] = "Supplier name"
-    ws["B1"] = supplier_name
-    ws["A3"] = "Product name"
-    ws["B3"] = "Description"
-    ws["C3"] = "Quantity"
-    ws["D3"] = "Unit price"
+    ws["A2"] = supplier_name
+    ws["A4"] = "Product name"
+    ws["B4"] = "Description"
+    ws["C4"] = "Quantity"
+    ws["D4"] = "Unit price"
+    ws["E4"] = "Supplier Part Number"
 
-    excel_row = 4
+    excel_row = 5
     for row in converted_rows:
         ws.cell(row=excel_row, column=1, value=row["product_name"])
         ws.cell(row=excel_row, column=2, value=row["description"])
         ws.cell(row=excel_row, column=3, value=row["quantity"])
         ws.cell(row=excel_row, column=4, value=row["unit_price"])
+        ws.cell(row=excel_row, column=5, value=row["supplier_part_number"])
         excel_row += 1
 
     wb.save(output_path)
@@ -128,7 +137,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--supplier",
         default="Farnell",
-        help="Supplier name written to cell B1 (default: Farnell).",
+        help="Supplier name written to cell A2 (default: Farnell).",
     )
     return parser.parse_args()
 

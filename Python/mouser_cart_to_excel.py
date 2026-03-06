@@ -3,10 +3,11 @@
 Convert a Mouser cart XLS file into the Excel format expected by ariba_excel_import.py.
 
 Mapping:
-- Mouser "Mouser-nr"      -> Excel "Product name"
+- Mouser "Mouser-nr | Omschrijving" (max 80 chars) -> Excel "Product name"
 - Mouser "Omschrijving"   -> Excel "Description"
 - Mouser "Besteld aantal" -> Excel "Quantity"
 - Mouser "Prijs (EUR)"    -> Excel "Unit price"
+- Mouser "Mouser-nr"      -> Excel "Supplier Part Number"
 """
 
 from __future__ import annotations
@@ -43,6 +44,11 @@ def normalize_decimal_text(value: object, field_name: str) -> str:
     if number <= 0:
         raise ValueError(f"{field_name} must be > 0 (got '{value}').")
     return format(number.normalize(), "f")
+
+
+def build_product_name(mouser_number: str, description: str, max_len: int = 80) -> str:
+    combined = f"{mouser_number} | {description}"
+    return combined[:max_len]
 
 
 def detect_header_row(sheet: xlrd.sheet.Sheet) -> int:
@@ -99,10 +105,11 @@ def parse_mouser_xls(path: Path) -> List[Dict[str, str]]:
 
         rows.append(
             {
-                "product_name": product_name,
+                "product_name": build_product_name(product_name, description),
                 "description": description,
                 "quantity": quantity,
                 "unit_price": unit_price,
+                "supplier_part_number": product_name,
             }
         )
 
@@ -117,18 +124,20 @@ def write_output_excel(output_path: Path, supplier_name: str, items: List[Dict[s
     ws.title = "Order"
 
     ws["A1"] = "Supplier name"
-    ws["B1"] = supplier_name
-    ws["A3"] = "Product name"
-    ws["B3"] = "Description"
-    ws["C3"] = "Quantity"
-    ws["D3"] = "Unit price"
+    ws["A2"] = supplier_name
+    ws["A4"] = "Product name"
+    ws["B4"] = "Description"
+    ws["C4"] = "Quantity"
+    ws["D4"] = "Unit price"
+    ws["E4"] = "Supplier Part Number"
 
-    row_idx = 4
+    row_idx = 5
     for item in items:
         ws.cell(row=row_idx, column=1, value=item["product_name"])
         ws.cell(row=row_idx, column=2, value=item["description"])
         ws.cell(row=row_idx, column=3, value=item["quantity"])
         ws.cell(row=row_idx, column=4, value=item["unit_price"])
+        ws.cell(row=row_idx, column=5, value=item["supplier_part_number"])
         row_idx += 1
 
     wb.save(output_path)
@@ -143,7 +152,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--supplier",
         default="Mouser",
-        help="Supplier name written to cell B1 (default: Mouser).",
+        help="Supplier name written to cell A2 (default: Mouser).",
     )
     return parser.parse_args()
 
