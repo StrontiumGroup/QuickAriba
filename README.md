@@ -192,7 +192,7 @@ Tasks:
    - Product name <- [SOURCE COLUMN(S); merge if needed; clipped to 80 characters]
    - Description <- [SOURCE COLUMN(S); merge if needed]
    - Quantity <- [SOURCE COLUMN]
-   - Unit price <- [SOURCE COLUMN]
+   - Unit price <- [SOURCE COLUMN with price before VAT; if the supplier cart contains the price after VAT, convert using the VAT rate given in % in .\Python\VATRate.xlsx [A2]]
    [- Supplier Part Number <- [SOURCE COLUMN]]
 3) Update Python/supplier_file_to_ariba.py so it:
    - detects this new supplier format reliably,
@@ -226,7 +226,7 @@ Column mapping used:
 - Reichelt `Item No. | Description` (clipped to max 80 chars) -> Excel `Product name`
 - Reichelt `Description` -> Excel `Description`
 - Reichelt `Quantity` -> Excel `Quantity`
-- Reichelt `Price` -> Excel `Unit price`
+- Reichelt `Price` / (1 + VATRate.xlsx[B2]/100) -> Excel `Unit price`
 - Reichelt `Item No.` -> Excel `Supplier Part Number` (column `E`, optional)
 
 Ignored Reichelt columns:
