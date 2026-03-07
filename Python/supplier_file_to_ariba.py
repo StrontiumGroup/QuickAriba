@@ -8,6 +8,7 @@ Supported inputs:
 - Schäfter + Kirchhoff offer PDF
 - Thorlabs cart CSV
 - Farnell cart CSV
+- Conrad cart CSV
 - DigiKey cart XLSX
 - Mouser cart XLS
 """
@@ -95,6 +96,10 @@ def detect_csv_supplier(path: Path) -> Optional[str]:
         return None
 
     header_set = set(headers)
+    conrad_needed = {"Quantity", "Conrad Article-Nr.", "Description", "Unit Price"}
+    if conrad_needed.issubset(header_set):
+        return "conrad"
+
     thorlabs_needed = {"Item Number", "Quantity", "Description", "Unit Price", "URL"}
     if thorlabs_needed.issubset(header_set):
         return "thorlabs"
@@ -204,6 +209,8 @@ def detect_input_kind(path: Path) -> str:
         return "unknown_pdf"
     if suffix in {".csv", ".cvs"}:
         supplier = detect_csv_supplier(path)
+        if supplier == "conrad":
+            return "conrad_csv"
         if supplier == "thorlabs":
             return "thorlabs_csv"
         if supplier == "farnell":
@@ -251,6 +258,7 @@ def build_conversion_command(
     converters: Dict[str, Tuple[str, str]] = {
         "reichelt_pdf": ("reichelt_offer_to_excel.py", "--pdf"),
         "sk_pdf": ("S+K_offer_to_excel.py", "--pdf"),
+        "conrad_csv": ("Conrad_cart_to_excel.py", "--csv"),
         "thorlabs_csv": ("thorlabs_cart_to_excel.py", "--csv"),
         "farnell_csv": ("farnell_cart_to_excel.py", "--csv"),
         "digikey_xlsx": ("digikey_cart_to_excel.py", "--xlsx"),
@@ -352,7 +360,7 @@ def main() -> int:
 
     if kind.startswith("unknown"):
         print("Unsupported or unknown input format.")
-        print("Supported: Ariba .xlsx, Reichelt .pdf, Schäfter + Kirchhoff .pdf, Thorlabs .csv, Farnell .csv, DigiKey .xlsx, Mouser .xls")
+        print("Supported: Ariba .xlsx, Reichelt .pdf, Schäfter + Kirchhoff .pdf, Conrad .csv, Thorlabs .csv, Farnell .csv, DigiKey .xlsx, Mouser .xls")
         return 2
 
     python_exe = sys.executable

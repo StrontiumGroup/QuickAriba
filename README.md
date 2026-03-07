@@ -39,6 +39,7 @@ This project contains the following scripts in the `Python` folder:
 - `S+K_offer_to_excel.py`: converts a Schäfter + Kirchhoff offer PDF into that Excel format.
 - `thorlabs_cart_to_excel.py`: converts a Thorlabs cart CSV into that Excel format.
 - `farnell_cart_to_excel.py`: converts a Farnell cart CSV into that Excel format.
+- `Conrad_cart_to_excel.py`: converts a Conrad cart CSV into that Excel format.
 - `digikey_cart_to_excel.py`: converts a DigiKey cart Excel file into that Excel format.
 - `mouser_cart_to_excel.py`: converts a Mouser cart XLS file into that Excel format.
 
@@ -141,6 +142,7 @@ It supports:
 - Ariba-ready `.xlsx` (no conversion)
 - Reichelt `.pdf`
 - Schäfter + Kirchhoff `.pdf`
+- Conrad `.csv`
 - Thorlabs `.csv`
 - Farnell `.csv`
 - DigiKey `.xlsx`
@@ -307,6 +309,27 @@ Column mapping used:
 - Farnell `Prijs per stuk` -> Excel `Unit price`
 - Farnell `Ordercode` -> Excel `Supplier Part Number` (column `E`, optional)
 
+## Conrad CSV to Excel
+
+Use this script when you export a Conrad cart CSV and want to generate the Excel file for the importer.
+
+```powershell
+.\.venv\Scripts\python .\Python\Conrad_cart_to_excel.py --csv ".\ExampleOffersFromSupplier\ExampleConradCart.csv" --out ".\ExampleOrdersForAriba\\orders_from_conrad.xlsx"
+```
+
+Optional flags:
+
+- `--supplier` default: `Conrad` (written to cell `A2`)
+- `--vat-xlsx` default: `.\Python\VATRate.xlsx` (reads VAT rate from `A2`)
+
+Column mapping used:
+
+- Conrad `Conrad Article-Nr. | Description` (clipped to max 80 chars) -> Excel `Product name`
+- Conrad `Description` -> Excel `Description`
+- Conrad `Quantity` -> Excel `Quantity`
+- Conrad `Unit Price` / (1 + VATRate.xlsx[A2]/100) -> Excel `Unit price`
+- Conrad `Conrad Article-Nr.` -> Excel `Supplier Part Number` (column `E`, optional)
+
 ## DigiKey XLSX to Excel
 
 Use this script when you export a DigiKey cart workbook and want to generate the Excel file for the importer.
@@ -424,3 +447,4 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 - Verify the PDF is a Reichelt offer table similar to `ExampleReicheltOffer.pdf`.
 - If extraction still fails, install dependencies again: `.\.venv\Scripts\python -m pip install -r requirements.txt`.
+
