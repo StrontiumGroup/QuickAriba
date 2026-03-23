@@ -40,6 +40,7 @@ This project contains the following scripts in the `Python` folder:
 - `thorlabs_cart_to_excel.py`: converts a Thorlabs cart CSV into that Excel format.
 - `farnell_cart_to_excel.py`: converts a Farnell cart CSV into that Excel format.
 - `Conrad_cart_to_excel.py`: converts a Conrad cart CSV into that Excel format.
+- `RS_Components_cart_to_excel.py`: converts an RS Components cart CSV into that Excel format.
 - `digikey_cart_to_excel.py`: converts a DigiKey cart Excel file into that Excel format.
 - `mouser_cart_to_excel.py`: converts a Mouser cart XLS file into that Excel format.
 
@@ -145,6 +146,7 @@ It supports:
 - Conrad `.csv`
 - Thorlabs `.csv`
 - Farnell `.csv`
+- RS Components `.csv`
 - DigiKey `.xlsx`
 - Mouser `.xls`
 
@@ -355,6 +357,26 @@ Ignored DigiKey columns:
 - `Manufacturer Part Number`
 - `Available`
 - `Backorder`
+
+## RS Components CSV to Excel
+
+Use this script when you export an RS Components cart CSV and want to generate the Excel file for the importer.
+
+```powershell
+.\.venv\Scripts\python .\Python\RS_Components_cart_to_excel.py --csv ".\ExampleOffersFromSupplier\ExampleRSComponentsCart.csv" --out ".\ExampleOrdersForAriba\\orders_from_rscomponents.xlsx"
+```
+
+Optional flags:
+
+- `--supplier` default: `RS Components` (written to cell `A2`)
+
+Column mapping used:
+
+- RS Components `RS-voorraadnr. | Beschrijving` (clipped to max 80 chars) -> Excel `Product name`
+- RS Components `Beschrijving` -> Excel `Description`
+- RS Components `Aantal` -> Excel `Quantity`
+- RS Components `Prijs per stuk` -> Excel `Unit price`
+- RS Components `RS-voorraadnr.` -> Excel `Supplier Part Number` (column `E`, optional)
 
 ## Mouser XLS to Excel
 
