@@ -1,10 +1,10 @@
-# QuickAriba Importer
+﻿# QuickAriba Importer
 
 ## Quick start
 
 Use QuickAriba when you want to quickly submit an order to Ariba.
 
-Prerequisites: Windows, Chrome installed, and Python available in `PATH`.
+Prerequisites: Windows, Chrome installed, Python available in `PATH`, and screen set to about 1200 pixel height.
 
 1. One-time setup: create `.venv` and install dependencies (see [Install](#install)).
 2. Double-click `chrome.bat` to start Chrome with remote debugging.
