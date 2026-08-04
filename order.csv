@@ -1,5 +1,10 @@
-﻿"RS-voorraadnr.","Aantal","Eenheid","Verpakkingsgrootte","Kostenplaats","Beschrijving","Artikelnr. fabrikant Nr.","Naam fabrikant","Prijs per stuk","Totale prijs"
-"8496128",1,"Per stuk",1,,"RS PRO France, Germany Mains Plug Black, 16A, Cable Rubber, 250 V, Screw",,"RS PRO",5.71,5.71
-"0425610",5,"Elk (in een tas van 5)",5,,"Deutsch, DT Plastic Male 2 Way Wedge Lock for use with Automotive Connectors","W2S-P012","Deutsch",0.136,0.68
-"5132590",1,"1 tas 500",500,,"RS PRO Insulated Crimp Bootlace Ferrule, 8 mm Pin Length, 1.5 mm Pin Diameter, Grey from 18 AWG to 18 AWG Wire Size",,"RS PRO",25.07,25.07
-"1878732",5,"Elk (in een pakket van 5)",5,,"Deutsch, DT Automotive Connector Female Blue, Clear, Black, Green, Orange, Brown, Grey 2 Way Crimp Termination DT04-2P","DT04-2P","Deutsch",1.432,7.16
+"Quantity","Conrad Article-Nr.","Product Note","Description","Unit Price","Total Price"
+"1","2163361-62","","TRU COMPONENTS T1806P023 Keramik-Kondensator SMD 0805 50 V 10 % (L x B) 2.0 mm x 1.2 mm 1000 Teile Tape cut","40.33","40.33"
+"1","2163363-62","","TRU COMPONENTS T1806P026 Keramik-Kondensator SMD 1206 50 V 10 % (L x B) 3.2 mm x 1.6 mm 500 Teile Tape cut","36.13","36.13"
+"1","2163357-62","","TRU COMPONENTS T1806P020 Keramik-Kondensator SMD 0603 50 V 10 % (L x B) 1.6 mm x 0.8 mm 1000 Teile Tape cut","65.54","65.54"
+"1","1564932-62","","TRU COMPONENTS Keramik-Kondensator radial bedrahtet 50 V 20 % 500 St.","36.13","36.13"
+"1","1564931-62","","TRU COMPONENTS Elektrolyt-Kondensator radial bedrahtet 20 % 148 St.","12.6","12.6"
+"20","458084-62","","Kemet C0805C106K4PAC7800+ Keramik-Kondensator SMD 0805 10 µF 16 V 10 % 1 St. Tape cut","0.14","2.8"
+"10","445372-62","","Yageo CC1206ZPY5V7BB475 Keramik-Kondensator SMD 1206 4.7 µF 16 V 20 % 1 St. Tape cut","0.03","0.3"
+"1","1717352-62","","TRU COMPONENTS TC-6869408 TC-6869408 Sortiments-Album SMD 0603 0.1 W 1 % 1000 Teile","36.13","36.13"
+"1","1717354-62","","TRU COMPONENTS TC-6869416 TC-6869416 Sortiments-Album SMD 1206 0.25 W 1 % 1000 Teile","50.41","50.41"

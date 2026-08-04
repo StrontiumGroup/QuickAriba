@@ -308,6 +308,23 @@ def first_visible_text(page: Page, text: str):
     return None
 
 
+def first_visible_items_header(page: Page):
+    """Find the requisition item heading across Ariba's Items(N)/Items (N) variants."""
+    matches = page.get_by_text(re.compile(r"^\s*Items\s*\(\s*\d+\s*\)\s*$", re.IGNORECASE))
+    try:
+        count = matches.count()
+    except PlaywrightError:
+        return None
+    for i in range(count):
+        candidate = matches.nth(i)
+        try:
+            if candidate.is_visible():
+                return candidate
+        except PlaywrightError:
+            continue
+    return None
+
+
 def wait_for_visible_text(page: Page, text: str, timeout_ms: int = 10000) -> None:
     deadline = time.monotonic() + (timeout_ms / 1000)
     while time.monotonic() < deadline:
@@ -1023,7 +1040,9 @@ def fill_item_fields_on_requisition(
     filled_supplier_part = 0
     if not meta.wbs:
         dbg("WBS is empty; skipping Accounting/WBS automation.")
-    max_rounds = max(55, expected_items * 10)
+    # In delivery-only mode expected_items is zero: completion is determined by
+    # clearing all item error banners, independent of the cart's item count.
+    max_rounds = 500 if expected_items <= 0 else max(55, expected_items * 10)
 
     for round_idx in range(max_rounds):
         progress = 0
@@ -2447,7 +2466,7 @@ def fill_item_deliver_inputs(page: Page, value: str, min_y: float) -> int:
 
 def get_items_section_min_y(page: Page) -> float:
     # Primary anchor.
-    items_header = first_visible_text(page, "Items (")
+    items_header = first_visible_items_header(page)
     if items_header is not None:
         try:
             box = items_header.bounding_box()
@@ -2474,6 +2493,17 @@ def checkout_and_fill_requisition(
     click_checkout(page)
     fill_requisition_header_fields(page, meta)
     fill_item_fields_on_requisition(page, meta, items, expected_items)
+
+
+def fill_open_requisition(page: Page, meta: OrderMeta) -> None:
+    """Fill an already-open checkout page without adding items or clicking checkout."""
+    if first_visible_items_header(page) is None:
+        raise RuntimeError(
+            "Could not find the Items heading. Open the checkout/delivery page first."
+        )
+    print("Filling delivery information for all existing cart items...")
+    fill_requisition_header_fields(page, meta)
+    fill_item_fields_on_requisition(page, meta, [], expected_items=0)
 
 
 def fill_one_item(page: Page, item: ItemRow) -> None:
@@ -2516,8 +2546,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--excel",
-        required=True,
+        required=False,
         help="Path to .xlsx file with Supplier name in A1/A2 and headers on row 4.",
+    )
+    parser.add_argument(
+        "--only_deliver",
+        "--only-deliver",
+        action="store_true",
+        help=(
+            "Fill PaymentAndShipping data on an already-open checkout page; "
+            "do not read an order file, add cart items, or click Checkout."
+        ),
     )
     parser.add_argument(
         "--cdp-url",
@@ -2562,25 +2601,36 @@ def main() -> int:
     global DEBUG
     args = parse_args()
     DEBUG = args.debug
-    excel_path = Path(args.excel).expanduser().resolve()
-    if not excel_path.exists():
-        print(f"Excel file not found: {excel_path}")
-        return 2
     payment_shipping_path = Path(args.payment_shipping).expanduser().resolve()
     if not payment_shipping_path.exists():
         print(f"Payment/shipping file not found: {payment_shipping_path}")
         return 2
 
     try:
-        meta_from_order, items = load_items_from_excel(excel_path)
+        if args.only_deliver:
+            items: List[ItemRow] = []
+            supplier_name = ""
+        else:
+            if not args.excel:
+                print("--excel is required unless --only_deliver is used.")
+                return 2
+            excel_path = Path(args.excel).expanduser().resolve()
+            if not excel_path.exists():
+                print(f"Excel file not found: {excel_path}")
+                return 2
+            meta_from_order, items = load_items_from_excel(excel_path)
+            supplier_name = meta_from_order.supplier_name
         meta = load_payment_and_shipping_meta(
-            payment_shipping_path, supplier_name=meta_from_order.supplier_name
+            payment_shipping_path, supplier_name=supplier_name
         )
     except Exception as exc:  # pylint: disable=broad-except
         print(f"Excel validation error: {exc}")
         return 2
 
-    print(f"Loaded {len(items)} item(s). Supplier: {meta.supplier_name}")
+    if args.only_deliver:
+        print("Loaded delivery data from PaymentAndShipping.xlsx.")
+    else:
+        print(f"Loaded {len(items)} item(s). Supplier: {meta.supplier_name}")
     dbg(
         f"Loaded metadata: need_by_date='{meta.need_by_date}', "
         f"deliver_to='{meta.deliver_to}', wbs='{meta.wbs}'"
@@ -2597,12 +2647,18 @@ def main() -> int:
             if page is None:
                 raise RuntimeError("No open browser tabs found in the CDP session.")
             page.bring_to_front()
-            run_import(page, meta, items)
+            if args.only_deliver:
+                fill_open_requisition(page, meta)
+            else:
+                run_import(page, meta, items)
     except Exception as exc:  # pylint: disable=broad-except
         print(f"Automation failed: {exc}")
         return 1
 
-    print("Import completed. Please review cart and continue checkout manually.")
+    if args.only_deliver:
+        print("Delivery information completed. Please review the requisition before submitting.")
+    else:
+        print("Import completed. Please review cart and continue checkout manually.")
     return 0
 
 
